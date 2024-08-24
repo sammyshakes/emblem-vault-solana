@@ -1,0 +1,22 @@
+[toolchain]
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+emblem_vault_solana = "DMLBNjTTdxA3Tnbx21ZsQU3hX1VUSW4SENPb3HCZrBCr"
+
+[programs.devnet]
+emblem_vault_solana = "DMLBNjTTdxA3Tnbx21ZsQU3hX1VUSW4SENPb3HCZrBCr"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+# cluster = "devnet"
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
