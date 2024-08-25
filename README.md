@@ -10,7 +10,7 @@
 - [ ] Complete `claim` function
 - [ ] Complete `burn` function
 - [ ] Implement `update_signer_public_key` function
-- [ ] Add metadata support
+- [x] Add metadata support
 - [ ] Comprehensive error handling
 
 ## Testing
