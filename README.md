@@ -57,7 +57,7 @@
 
 ---
 
-### 5. Current Test Results
+### Current Test Results
 
 ```bash
 ✔ Mints an NFT (408ms)
