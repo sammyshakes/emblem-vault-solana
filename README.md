@@ -3,32 +3,32 @@
 ## Solana Program
 
 - [x] Basic program structure
-- [x] State management (EmblemVaultState, ClaimRecord, BurnRecord)
+- [x] State management (Vault, ClaimRecord, BurnRecord)
 - [x] Instruction definition
 - [x] Signature verification implementation
-- [ ] Complete `initialize` function
-- [ ] Complete `claim` function
-- [ ] Complete `burn` function
+- [x] Complete `initialize_vault` function
+- [x] Complete `claim_nft` function (formerly `mint_nft`)
+- [x] Complete `burn_nft` function
 - [ ] Implement `update_signer_public_key` function
 - [x] Add metadata support
-- [ ] Comprehensive error handling
+- [x] Comprehensive error handling
 
 ## Testing
 
 - [x] Basic test structure
 - [x] Signature verification test
-- [x] Add test for `claim` function
-- [x] Complete test for `burn` function
+- [x] Add test for `claim_nft` function
+- [x] Complete test for `burn_nft` function
 - [x] Add test for `update_signer_public_key` function
-- [x] Add tests for error cases and edge scenarios
+- [x] Add tests for error cases and edge scenarios, including invalid signature test
 
 ## API/SDK Layer
 
 - [ ] Create TypeScript SDK structure
 - [ ] Implement connection to Solana program
 - [ ] Add function to generate keypair (interfacing with backend)
-- [ ] Add function to claim tokens
-- [ ] Add function to burn tokens
+- [ ] Add function to claim NFTs
+- [ ] Add function to burn NFTs
 - [ ] Implement signature request and verification process
 - [ ] Add utility functions (e.g., fetching vault state)
 
@@ -60,10 +60,11 @@
 ### Current Test Results
 
 ```bash
-✔ Mints an NFT (408ms)
-✔ Burns an NFT (411ms)
+✔ Mints an NFT (409ms)
+✔ Fails to mint an NFT with an invalid signature
+✔ Burns an NFT (391ms)
 
-2 passing (2s)
+3 passing (2s)
 ```
 
 ---

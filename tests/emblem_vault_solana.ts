@@ -107,7 +107,7 @@ describe("emblem_vault_solana", () => {
     });
 
     const mintNftIx = await program.methods
-      .mintNft(
+      .claimNft(
         "Test NFT",
         "NFT",
         metadataUri,
@@ -177,7 +177,7 @@ describe("emblem_vault_solana", () => {
     });
 
     const mintNftIx = await program.methods
-      .mintNft(
+      .claimNft(
         "Invalid NFT",
         "NFT",
         "https://example.com/token-metadata",
@@ -204,7 +204,7 @@ describe("emblem_vault_solana", () => {
       await provider.sendAndConfirm(transaction, [payerKeypair]);
       throw new Error("Minting should have failed but it succeeded!");
     } catch (error) {
-      console.log("Mint failed as expected with error:", error.message);
+      // console.log("Mint failed as expected with error:", error.message);
       expect(error.message).to.include("precompile verification failure");
     }
   });
