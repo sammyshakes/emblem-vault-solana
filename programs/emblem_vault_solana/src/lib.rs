@@ -1,7 +1,4 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::{
-    ed25519_program, instruction::Instruction, sysvar::instructions as instructions_sysvar_module,
-};
 use anchor_spl::metadata::{
     create_metadata_accounts_v3,
     mpl_token_metadata::types::{Creator, DataV2},
@@ -28,17 +25,10 @@ pub mod emblem_vault_solana {
         name: String,
         symbol: String,
         uri: String,
-        _signature: [u8; 64],
         timestamp: i64,
     ) -> Result<()> {
         let vault = &ctx.accounts.vault;
         require!(vault.is_initialized, VaultError::NotInitialized);
-
-        // Verify that the Ed25519 signature verification instruction is in the transaction
-        let instruction_sysvar = &ctx.accounts.instructions_sysvar;
-        let ix = instruction_sysvar.load_instruction_at_checked(0)?;
-
-        require!(validate_ed25519_ix(&ix), VaultError::InvalidSignature);
 
         // Check if the approval has expired (e.g., 1-hour validity)
         let current_time = Clock::get()?.unix_timestamp;
@@ -91,7 +81,9 @@ pub mod emblem_vault_solana {
         );
 
         create_metadata_accounts_v3(
-            cpi_ctx, data, false, // is_mutable
+            cpi_ctx,
+            data,
+            false, // is_mutable
             true,  // update_authority_is_signer
             None,  // collection_details
         )?;
@@ -100,6 +92,10 @@ pub mod emblem_vault_solana {
     }
 
     pub fn burn_nft(ctx: Context<BurnNFT>) -> Result<()> {
+        // Check if the token account has enough tokens to burn
+        let token_account = &ctx.accounts.token_account;
+        require!(token_account.amount >= 1, VaultError::InsufficientTokens);
+
         token::burn(
             CpiContext::new(
                 ctx.accounts.token_program.to_account_info(),
@@ -152,10 +148,6 @@ pub struct MintNFT<'info> {
     pub token_metadata_program: AccountInfo<'info>,
     /// CHECK: This is the authority that signed the approval off-chain
     pub authority: AccountInfo<'info>,
-    /// CHECK: Pass the Ed25519 program
-    pub ed25519_program: AccountInfo<'info>,
-    /// CHECK: Instructions sysvar to verify the presence of the signature instruction
-    pub instructions_sysvar: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]
@@ -185,8 +177,6 @@ pub enum VaultError {
     InvalidSignature,
     #[msg("Approval has expired")]
     ApprovalExpired,
-}
-
-fn validate_ed25519_ix(ix: &Instruction) -> bool {
-    ix.program_id == ed25519_program::ID && ix.accounts.is_empty()
+    #[msg("Insufficient tokens to burn")]
+    InsufficientTokens,
 }
