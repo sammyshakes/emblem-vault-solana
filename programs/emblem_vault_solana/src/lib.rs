@@ -27,8 +27,8 @@ pub mod emblem_vault_solana {
         Ok(())
     }
 
-    pub fn claim_nft(
-        ctx: Context<ClaimNFT>,
+    pub fn mint_nft(
+        ctx: Context<MintNFT>,
         name: String,
         symbol: String,
         uri: String,
@@ -36,7 +36,7 @@ pub mod emblem_vault_solana {
         nonce: u64,
         external_token_id: String,
     ) -> Result<()> {
-        msg!("Claiming NFT...");
+        msg!("Minting NFT...");
 
         let vault = &mut ctx.accounts.vault;
         require!(vault.is_initialized, VaultError::NotInitialized);
@@ -141,7 +141,7 @@ pub struct InitializeVault<'info> {
 
 #[derive(Accounts)]
 #[instruction(name: String, symbol: String, uri: String, timestamp: i64, nonce: u64, external_token_id: String)]
-pub struct ClaimNFT<'info> {
+pub struct MintNFT<'info> {
     #[account(
         mut,
         seeds = [b"vault", authority.key().as_ref(), external_token_id.as_bytes()],

@@ -107,7 +107,7 @@ describe("emblem_vault_solana", () => {
     });
 
     const mintNftIx = await program.methods
-      .claimNft(
+      .mintNft(
         "Test NFT",
         "NFT",
         metadataUri,
@@ -125,7 +125,7 @@ describe("emblem_vault_solana", () => {
         tokenMetadataProgram: new PublicKey(
           "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         ),
-      })
+      } as any)
       .instruction();
 
     const transaction = new Transaction().add(verifySignatureIx, mintNftIx);
@@ -177,7 +177,7 @@ describe("emblem_vault_solana", () => {
     });
 
     const mintNftIx = await program.methods
-      .claimNft(
+      .mintNft(
         "Invalid NFT",
         "NFT",
         "https://example.com/token-metadata",
@@ -195,7 +195,7 @@ describe("emblem_vault_solana", () => {
         tokenMetadataProgram: new PublicKey(
           "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         ),
-      })
+      } as any)
       .instruction();
 
     const transaction = new Transaction().add(verifySignatureIx, mintNftIx);
