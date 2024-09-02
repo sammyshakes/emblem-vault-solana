@@ -70,6 +70,93 @@ describe("emblem_vault_solana", () => {
     );
   });
 
+  it("Fails to mint a vault NFT without signature verification", async () => {
+    const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL);
+    const timestamp = Math.floor(Date.now() / 1000);
+    const metadataUri = "https://example.com/token-metadata";
+
+    const mintVaultIx = await program.methods
+      .mintVault(
+        externalTokenId,
+        price,
+        "No Sig Vault",
+        "NOSIG",
+        metadataUri,
+        new anchor.BN(timestamp)
+      )
+      .accounts({
+        vault: vaultPda,
+        mint: mintKeypair.publicKey,
+        tokenAccount: tokenAccount.address,
+        metadata: Keypair.generate().publicKey, // This is just a placeholder
+        payer: payerKeypair.publicKey,
+        feeReceiver: feeReceiverKeypair.publicKey,
+        tokenMetadataProgram: new PublicKey(
+          "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+        ),
+      })
+      .instruction();
+
+    const transaction = new Transaction().add(mintVaultIx);
+
+    try {
+      await provider.sendAndConfirm(transaction, [payerKeypair]);
+      throw new Error("Minting should have failed but it succeeded!");
+    } catch (error) {
+      expect(error.message).to.include("custom program error: 0x1774"); // InvalidSignature error code
+    }
+  });
+
+  it("Fails to mint a vault NFT with an invalid signature", async () => {
+    const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL);
+    const timestamp = Math.floor(Date.now() / 1000);
+    const message = `mint:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
+    const messageBytes = decodeUTF8(message);
+
+    const tamperedMessageBytes = decodeUTF8("tampered_message");
+    const invalidSignature = nacl.sign.detached(
+      tamperedMessageBytes,
+      payerKeypair.secretKey
+    );
+
+    const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
+      publicKey: payerKeypair.publicKey.toBytes(),
+      message: messageBytes,
+      signature: invalidSignature,
+    });
+
+    const mintVaultIx = await program.methods
+      .mintVault(
+        externalTokenId,
+        price,
+        "Invalid Vault",
+        "INVALID",
+        "https://example.com/invalid-metadata",
+        new anchor.BN(timestamp)
+      )
+      .accounts({
+        vault: vaultPda,
+        mint: mintKeypair.publicKey,
+        tokenAccount: tokenAccount.address,
+        metadata: Keypair.generate().publicKey, // This is just a placeholder
+        payer: payerKeypair.publicKey,
+        feeReceiver: feeReceiverKeypair.publicKey,
+        tokenMetadataProgram: new PublicKey(
+          "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+        ),
+      })
+      .instruction();
+
+    const transaction = new Transaction().add(verifySignatureIx, mintVaultIx);
+
+    try {
+      await provider.sendAndConfirm(transaction, [payerKeypair]);
+      throw new Error("Minting should have failed but it succeeded!");
+    } catch (error) {
+      expect(error.message).to.include("precompile verification failure");
+    }
+  });
+
   it("Mints a vault NFT", async () => {
     const metadataUri = "https://example.com/token-metadata";
     const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL fee
@@ -139,56 +226,6 @@ describe("emblem_vault_solana", () => {
     );
   });
 
-  it("Fails to mint a vault NFT with an invalid signature", async () => {
-    const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL);
-    const timestamp = Math.floor(Date.now() / 1000);
-    const message = `mint:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
-    const messageBytes = decodeUTF8(message);
-
-    const tamperedMessageBytes = decodeUTF8("tampered_message");
-    const invalidSignature = nacl.sign.detached(
-      tamperedMessageBytes,
-      payerKeypair.secretKey
-    );
-
-    const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
-      publicKey: payerKeypair.publicKey.toBytes(),
-      message: messageBytes,
-      signature: invalidSignature,
-    });
-
-    const mintVaultIx = await program.methods
-      .mintVault(
-        externalTokenId,
-        price,
-        "Invalid Vault",
-        "INVALID",
-        "https://example.com/invalid-metadata",
-        new anchor.BN(timestamp)
-      )
-      .accounts({
-        vault: vaultPda,
-        mint: mintKeypair.publicKey,
-        tokenAccount: tokenAccount.address,
-        metadata: Keypair.generate().publicKey, // This is just a placeholder
-        payer: payerKeypair.publicKey,
-        feeReceiver: feeReceiverKeypair.publicKey,
-        tokenMetadataProgram: new PublicKey(
-          "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
-        ),
-      })
-      .instruction();
-
-    const transaction = new Transaction().add(verifySignatureIx, mintVaultIx);
-
-    try {
-      await provider.sendAndConfirm(transaction, [payerKeypair]);
-      throw new Error("Minting should have failed but it succeeded!");
-    } catch (error) {
-      expect(error.message).to.include("precompile verification failure");
-    }
-  });
-
   it("Claims a vault NFT", async () => {
     const price = new anchor.BN(0.5 * anchor.web3.LAMPORTS_PER_SOL); // 0.5 SOL fee
     const timestamp = Math.floor(Date.now() / 1000);
@@ -236,12 +273,14 @@ describe("emblem_vault_solana", () => {
       .accounts({ vault: vaultPda })
       .view();
     expect(isClaimed).to.equal(vaultAccount.isClaimed);
+    // console.log("isClaimed", isClaimed);
 
     const vaultOwner = await program.methods
       .getVaultOwner()
       .accounts({ vault: vaultPda })
       .view();
     expect(vaultOwner.toString()).to.equal(vaultAccount.owner.toString());
+    // console.log("vaultOwner", vaultOwner);
 
     if (vaultAccount.isClaimed) {
       const claimer = await program.methods
@@ -249,6 +288,7 @@ describe("emblem_vault_solana", () => {
         .accounts({ vault: vaultPda })
         .view();
       expect(claimer.toString()).to.equal(vaultAccount.claimer.toString());
+      // console.log("claimer", claimer);
     }
   });
 });

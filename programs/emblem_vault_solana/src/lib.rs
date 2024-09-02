@@ -5,6 +5,8 @@ use anchor_spl::metadata::{
     mpl_token_metadata::types::{Creator, DataV2},
     CreateMetadataAccountsV3,
 };
+use anchor_lang::solana_program::sysvar::instructions::{load_instruction_at_checked, ID as InstructionsID};
+use anchor_lang::solana_program::ed25519_program;
 
 declare_id!("DMLBNjTTdxA3Tnbx21ZsQU3hX1VUSW4SENPb3HCZrBCr");
 
@@ -22,6 +24,12 @@ pub mod emblem_vault_solana {
         timestamp: i64,
     ) -> Result<()> {
         msg!("Minting vault NFT...");
+
+        // Load the previous instruction
+        let previous_ix = load_instruction_at_checked(0, &ctx.accounts.instruction_sysvar_account.to_account_info())?;
+        if previous_ix.program_id != ed25519_program::ID {
+            return Err(VaultError::InvalidSignature.into());
+        }
 
         // Check if the approval has expired (15-minute validity)
         let current_time = Clock::get()?.unix_timestamp;
@@ -107,6 +115,12 @@ pub mod emblem_vault_solana {
         timestamp: i64,
     ) -> Result<()> {
         msg!("Claiming vault...");
+        
+        // Load the previous instruction
+        let previous_ix = load_instruction_at_checked(0, &ctx.accounts.instruction_sysvar_account.to_account_info())?;
+        if previous_ix.program_id != ed25519_program::ID {
+            return Err(VaultError::InvalidSignature.into());
+        }
 
         let vault = &mut ctx.accounts.vault;
         require!(vault.is_minted, VaultError::NotMinted);
@@ -188,6 +202,9 @@ pub struct MintVault<'info> {
     /// CHECK: This is the account that will receive the fee
     #[account(mut)]
     pub fee_receiver: AccountInfo<'info>,
+    /// CHECK: This account is not dangerous because we only read from it
+    #[account(address = InstructionsID)]
+    pub instruction_sysvar_account: AccountInfo<'info>,
     pub rent: Sysvar<'info, Rent>,
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
@@ -214,6 +231,9 @@ pub struct ClaimVault<'info> {
     /// CHECK: This is the account that will receive the fee
     #[account(mut)]
     pub fee_receiver: AccountInfo<'info>,
+    /// CHECK: This account is not dangerous because we only read from it
+    #[account(address = InstructionsID)]
+    pub instruction_sysvar_account: AccountInfo<'info>,
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
 }
@@ -244,4 +264,6 @@ pub enum VaultError {
     AlreadyClaimed,
     #[msg("Invalid external token ID")]
     InvalidExternalTokenId,
+    #[msg("Invalid signature")]
+    InvalidSignature,
 }
