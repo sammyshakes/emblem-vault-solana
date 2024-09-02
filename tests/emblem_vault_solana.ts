@@ -131,6 +131,12 @@ describe("emblem_vault_solana", () => {
     expect(vaultAccount.owner.toString()).to.equal(
       payerKeypair.publicKey.toString()
     );
+    expect(vaultAccount.mint.toString()).to.equal(
+      mintKeypair.publicKey.toString()
+    );
+    expect(vaultAccount.tokenAccount.toString()).to.equal(
+      tokenAccount.address.toString()
+    );
   });
 
   it("Fails to mint a vault NFT with an invalid signature", async () => {
