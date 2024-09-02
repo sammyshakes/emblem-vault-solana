@@ -29,15 +29,17 @@ describe("emblem_vault_solana", () => {
   let mintKeypair: Keypair;
   let tokenAccount: Account;
   let payerKeypair: Keypair;
+  let feeReceiverKeypair: Keypair;
   let externalTokenId: string;
 
   before(async () => {
     mintKeypair = Keypair.generate();
     payerKeypair = Keypair.generate();
+    feeReceiverKeypair = Keypair.generate();
     externalTokenId = "EXT_" + Date.now().toString();
 
     await provider.connection
-      .requestAirdrop(payerKeypair.publicKey, 5 * anchor.web3.LAMPORTS_PER_SOL)
+      .requestAirdrop(payerKeypair.publicKey, 10 * anchor.web3.LAMPORTS_PER_SOL)
       .then((airdropSignature) =>
         provider.connection.confirmTransaction(airdropSignature)
       );
@@ -66,28 +68,13 @@ describe("emblem_vault_solana", () => {
       ],
       program.programId
     );
-
-    await program.methods
-      .initializeVault("Test Vault", externalTokenId)
-      .accounts({
-        authority: payerKeypair.publicKey,
-      })
-      .signers([payerKeypair])
-      .rpc();
-
-    const vaultAccount = await program.account.vault.fetch(vaultPda);
-    expect(vaultAccount.isInitialized).to.be.true;
-    expect(vaultAccount.name).to.equal("Test Vault");
   });
 
-  it("Mints an NFT", async () => {
+  it("Mints a vault NFT", async () => {
     const metadataUri = "https://example.com/token-metadata";
-    const vaultAccount = await program.account.vault.fetch(vaultPda);
-
+    const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL fee
     const timestamp = Math.floor(Date.now() / 1000);
-    const message = `mint:${vaultPda.toBase58()}:${
-      vaultAccount.nonce
-    }:${timestamp}:${mintKeypair.publicKey.toBase58()}:${externalTokenId}`;
+    const message = `mint:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
     const messageBytes = decodeUTF8(message);
     const signature = nacl.sign.detached(messageBytes, payerKeypair.secretKey);
 
@@ -106,14 +93,14 @@ describe("emblem_vault_solana", () => {
       signature: signature,
     });
 
-    const mintNftIx = await program.methods
-      .mintNft(
-        "Test NFT",
-        "NFT",
+    const mintVaultIx = await program.methods
+      .mintVault(
+        externalTokenId,
+        price,
+        "Test Vault",
+        "VAULT",
         metadataUri,
-        new anchor.BN(timestamp),
-        vaultAccount.nonce,
-        externalTokenId
+        new anchor.BN(timestamp)
       )
       .accounts({
         vault: vaultPda,
@@ -121,14 +108,14 @@ describe("emblem_vault_solana", () => {
         tokenAccount: tokenAccount.address,
         metadata: metadataPda,
         payer: payerKeypair.publicKey,
-        authority: payerKeypair.publicKey,
+        feeReceiver: feeReceiverKeypair.publicKey,
         tokenMetadataProgram: new PublicKey(
           "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         ),
-      } as any)
+      })
       .instruction();
 
-    const transaction = new Transaction().add(verifySignatureIx, mintNftIx);
+    const transaction = new Transaction().add(verifySignatureIx, mintVaultIx);
     await provider.sendAndConfirm(transaction, [payerKeypair]);
 
     const tokenAccountInfo = await provider.connection.getTokenAccountBalance(
@@ -137,22 +124,19 @@ describe("emblem_vault_solana", () => {
     expect(new anchor.BN(tokenAccountInfo.value.amount).eq(new anchor.BN(1))).to
       .be.true;
 
-    const updatedVaultAccount = await program.account.vault.fetch(vaultPda);
-    expect(
-      new anchor.BN(updatedVaultAccount.nonce).eq(
-        vaultAccount.nonce.add(new anchor.BN(1))
-      )
-    ).to.be.true;
-    expect(updatedVaultAccount.isClaimed).to.be.true;
+    const vaultAccount = await program.account.vault.fetch(vaultPda);
+    expect(vaultAccount.isMinted).to.be.true;
+    expect(vaultAccount.isClaimed).to.be.false;
+    expect(vaultAccount.externalTokenId).to.equal(externalTokenId);
+    expect(vaultAccount.owner.toString()).to.equal(
+      payerKeypair.publicKey.toString()
+    );
   });
 
-  it("Fails to mint an NFT with an invalid signature", async () => {
-    const vaultAccount = await program.account.vault.fetch(vaultPda);
-
+  it("Fails to mint a vault NFT with an invalid signature", async () => {
+    const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL);
     const timestamp = Math.floor(Date.now() / 1000);
-    const message = `mint:${vaultPda.toBase58()}:${
-      vaultAccount.nonce
-    }:${timestamp}:${mintKeypair.publicKey.toBase58()}:${externalTokenId}`;
+    const message = `mint:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
     const messageBytes = decodeUTF8(message);
 
     const tamperedMessageBytes = decodeUTF8("tampered_message");
@@ -161,69 +145,104 @@ describe("emblem_vault_solana", () => {
       payerKeypair.secretKey
     );
 
-    const [metadataPda] = await PublicKey.findProgramAddress(
-      [
-        Buffer.from("metadata"),
-        new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s").toBuffer(),
-        mintKeypair.publicKey.toBuffer(),
-      ],
-      new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s")
-    );
-
     const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
       publicKey: payerKeypair.publicKey.toBytes(),
       message: messageBytes,
       signature: invalidSignature,
     });
 
-    const mintNftIx = await program.methods
-      .mintNft(
-        "Invalid NFT",
-        "NFT",
-        "https://example.com/token-metadata",
-        new anchor.BN(timestamp),
-        vaultAccount.nonce,
-        externalTokenId
+    const mintVaultIx = await program.methods
+      .mintVault(
+        externalTokenId,
+        price,
+        "Invalid Vault",
+        "INVALID",
+        "https://example.com/invalid-metadata",
+        new anchor.BN(timestamp)
       )
       .accounts({
         vault: vaultPda,
         mint: mintKeypair.publicKey,
         tokenAccount: tokenAccount.address,
-        metadata: metadataPda,
+        metadata: Keypair.generate().publicKey, // This is just a placeholder
         payer: payerKeypair.publicKey,
-        authority: payerKeypair.publicKey,
+        feeReceiver: feeReceiverKeypair.publicKey,
         tokenMetadataProgram: new PublicKey(
           "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         ),
-      } as any)
+      })
       .instruction();
 
-    const transaction = new Transaction().add(verifySignatureIx, mintNftIx);
+    const transaction = new Transaction().add(verifySignatureIx, mintVaultIx);
 
     try {
       await provider.sendAndConfirm(transaction, [payerKeypair]);
       throw new Error("Minting should have failed but it succeeded!");
     } catch (error) {
-      // console.log("Mint failed as expected with error:", error.message);
       expect(error.message).to.include("precompile verification failure");
     }
   });
 
-  it("Burns an NFT", async () => {
-    const tx = await program.methods
-      .burnNft()
+  it("Claims a vault NFT", async () => {
+    const price = new anchor.BN(0.5 * anchor.web3.LAMPORTS_PER_SOL); // 0.5 SOL fee
+    const timestamp = Math.floor(Date.now() / 1000);
+    const message = `claim:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
+    const messageBytes = decodeUTF8(message);
+    const signature = nacl.sign.detached(messageBytes, payerKeypair.secretKey);
+
+    const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
+      publicKey: payerKeypair.publicKey.toBytes(),
+      message: messageBytes,
+      signature: signature,
+    });
+
+    const claimVaultIx = await program.methods
+      .claimVault(externalTokenId, price, new anchor.BN(timestamp))
       .accounts({
         vault: vaultPda,
         mint: mintKeypair.publicKey,
         tokenAccount: tokenAccount.address,
-        authority: payerKeypair.publicKey,
+        claimer: payerKeypair.publicKey,
+        feeReceiver: feeReceiverKeypair.publicKey,
       })
-      .signers([payerKeypair])
-      .rpc();
+      .instruction();
+
+    const transaction = new Transaction().add(verifySignatureIx, claimVaultIx);
+    await provider.sendAndConfirm(transaction, [payerKeypair]);
 
     const tokenAccountInfo = await provider.connection.getTokenAccountBalance(
       tokenAccount.address
     );
     expect(tokenAccountInfo.value.uiAmount).to.equal(0);
+
+    const vaultAccount = await program.account.vault.fetch(vaultPda);
+    expect(vaultAccount.isClaimed).to.be.true;
+    expect(vaultAccount.claimer.toString()).to.equal(
+      payerKeypair.publicKey.toString()
+    );
+  });
+
+  it("Queries vault information", async () => {
+    const vaultAccount = await program.account.vault.fetch(vaultPda);
+
+    const isClaimed = await program.methods
+      .isClaimed()
+      .accounts({ vault: vaultPda })
+      .view();
+    expect(isClaimed).to.equal(vaultAccount.isClaimed);
+
+    const vaultOwner = await program.methods
+      .getVaultOwner()
+      .accounts({ vault: vaultPda })
+      .view();
+    expect(vaultOwner.toString()).to.equal(vaultAccount.owner.toString());
+
+    if (vaultAccount.isClaimed) {
+      const claimer = await program.methods
+        .getClaimer()
+        .accounts({ vault: vaultPda })
+        .view();
+      expect(claimer.toString()).to.equal(vaultAccount.claimer.toString());
+    }
   });
 });
