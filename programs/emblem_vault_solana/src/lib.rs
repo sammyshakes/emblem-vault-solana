@@ -1,23 +1,30 @@
 use anchor_lang::prelude::*;
+use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::{self, Mint, Token, TokenAccount};
 use anchor_spl::metadata::{
+    VerifyCollection,
+    verify_collection,
     create_metadata_accounts_v3,
-    mpl_token_metadata::types::{Creator, DataV2},
+    mpl_token_metadata::types::{Collection, Creator, DataV2},
     CreateMetadataAccountsV3,
 };
 use anchor_lang::solana_program::sysvar::instructions::{load_instruction_at_checked, ID as InstructionsID};
 use anchor_lang::solana_program::ed25519_program;
 
+
 declare_id!("DMLBNjTTdxA3Tnbx21ZsQU3hX1VUSW4SENPb3HCZrBCr");
 
 #[program]
 pub mod emblem_vault_solana {
+
     use super::*;
 
-    pub fn initialize_program(ctx: Context<InitializeProgram>, base_uri: String) -> Result<()> {
+    pub fn initialize_program(ctx: Context<InitializeProgram>, base_uri: String, signer_public_key: Pubkey, collection_address: Pubkey) -> Result<()> {
         let program_state = &mut ctx.accounts.program_state;
         program_state.base_uri = base_uri;
         program_state.authority = ctx.accounts.authority.key();
+        program_state.signer_public_key = signer_public_key;
+        program_state.collection_address = collection_address;
         Ok(())
     }
 
@@ -33,6 +40,20 @@ pub mod emblem_vault_solana {
         let previous_ix = load_instruction_at_checked(0, &ctx.accounts.instruction_sysvar_account.to_account_info())?;
         if previous_ix.program_id != ed25519_program::ID {
             return Err(VaultError::InvalidSignature.into());
+        }
+
+        // Extract the public key from the previous instruction
+        let ed25519_ix_data = previous_ix.data;
+        let mut pubkey_bytes = [0u8; 32];
+        pubkey_bytes.copy_from_slice(&ed25519_ix_data[1..33]);
+        let verification_public_key = Pubkey::new_from_array(pubkey_bytes);
+
+        msg!("Verification public key: {:?}", verification_public_key);
+        msg!("Extracted public key: {:?}", pubkey_bytes);
+
+        // Check if the verification public key matches the stored signer public key
+        if verification_public_key != ctx.accounts.program_state.signer_public_key {
+            return Err(VaultError::InvalidSigner.into());
         }
 
         // Check if the approval has expired (15-minute validity)
@@ -52,6 +73,29 @@ pub mod emblem_vault_solana {
             },
         );
         anchor_lang::system_program::transfer(cpi_context, fee)?;
+
+        // Initialize the mint
+        let mint_seeds = &[
+            b"vault_mint".as_ref(),
+            external_token_id.as_bytes(),
+        ];
+        let signer = &[&mint_seeds[..]];
+
+        let (mint_pda, _bump) = Pubkey::find_program_address(mint_seeds, ctx.program_id);
+
+        token::initialize_mint(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                token::InitializeMint {
+                    mint: ctx.accounts.mint.to_account_info(),
+                    rent: ctx.accounts.rent.to_account_info(),
+                },
+                signer,
+            ),
+            0, // 0 decimals for NFT
+            &mint_pda,
+            Some(&mint_pda),
+        )?;
 
         // Mint one token
         token::mint_to(
@@ -82,27 +126,49 @@ pub mod emblem_vault_solana {
                 verified: false,
                 share: 100,
             }]),
-            collection: None,
+            collection: Some(Collection {
+                verified: false,
+                key: ctx.accounts.program_state.collection_address,
+            }),
             uses: None,
         };
 
-        let accounts = CreateMetadataAccountsV3 {
-            metadata: ctx.accounts.metadata.to_account_info(),
-            mint: ctx.accounts.mint.to_account_info(),
-            mint_authority: ctx.accounts.payer.to_account_info(),
-            payer: ctx.accounts.payer.to_account_info(),
-            update_authority: ctx.accounts.payer.to_account_info(),
-            system_program: ctx.accounts.system_program.to_account_info(),
-            rent: ctx.accounts.rent.to_account_info(),
-        };
+        let create_metadata_accounts_ctx = CpiContext::new(
+            ctx.accounts.token_metadata_program.to_account_info(),
+            CreateMetadataAccountsV3 {
+                metadata: ctx.accounts.metadata.to_account_info(),
+                mint: ctx.accounts.mint.to_account_info(),
+                mint_authority: ctx.accounts.payer.to_account_info(),
+                payer: ctx.accounts.payer.to_account_info(),
+                update_authority: ctx.accounts.payer.to_account_info(),
+                system_program: ctx.accounts.system_program.to_account_info(),
+                rent: ctx.accounts.rent.to_account_info(),
+            },
+        );
 
         create_metadata_accounts_v3(
-            CpiContext::new(ctx.accounts.token_metadata_program.to_account_info(), accounts),
+            create_metadata_accounts_ctx,
             data,
-            false, // is_mutable
-            true,  // update_authority_is_signer
-            None,  // collection_details
+            true, // is_mutable
+            true, // update_authority_is_signer
+            None, // collection_details
         )?;
+
+    // Verify the collection
+    let verify_collection_ctx = CpiContext::new(
+        ctx.accounts.token_metadata_program.to_account_info(),
+        VerifyCollection {
+            metadata: ctx.accounts.metadata.to_account_info(),
+            collection_authority: ctx.accounts.collection_authority.to_account_info(),
+            payer: ctx.accounts.payer.to_account_info(),
+            collection_mint: ctx.accounts.collection_mint.to_account_info(),
+            collection_metadata: ctx.accounts.collection_metadata.to_account_info(),
+            collection_master_edition: ctx.accounts.collection_master_edition.to_account_info(),
+        },
+    );
+    
+    // Call the verify_collection function with the CPI context
+    verify_collection(verify_collection_ctx, None)?;
 
         // Initialize vault data
         let vault = &mut ctx.accounts.vault;
@@ -129,6 +195,17 @@ pub mod emblem_vault_solana {
         let previous_ix = load_instruction_at_checked(0, &ctx.accounts.instruction_sysvar_account.to_account_info())?;
         if previous_ix.program_id != ed25519_program::ID {
             return Err(VaultError::InvalidSignature.into());
+        }
+
+        // Extract the public key from the previous instruction
+        let ed25519_ix_data = previous_ix.data;
+        let mut pubkey_bytes = [0u8; 32];
+        pubkey_bytes.copy_from_slice(&ed25519_ix_data[1..33]);
+        let verification_public_key = Pubkey::new_from_array(pubkey_bytes);
+
+        // Check if the verification public key matches the stored signer public key
+        if verification_public_key != ctx.accounts.program_state.signer_public_key {
+            return Err(VaultError::InvalidSigner.into());
         }
 
         let vault = &mut ctx.accounts.vault;
@@ -197,6 +274,12 @@ pub mod emblem_vault_solana {
     pub fn get_base_uri(ctx: Context<GetBaseUri>) -> Result<String> {
         Ok(ctx.accounts.program_state.base_uri.clone())
     }
+
+    pub fn update_signer_public_key(ctx: Context<UpdateSignerPublicKey>, new_signer_public_key: Pubkey) -> Result<()> {
+        require!(ctx.accounts.authority.key() == ctx.accounts.program_state.authority, VaultError::Unauthorized);
+        ctx.accounts.program_state.signer_public_key = new_signer_public_key;
+        Ok(())
+    }
 }
 
  // Helper function to generate a symbol
@@ -236,14 +319,26 @@ pub struct MintVault<'info> {
                 1 +         // is_claimed (bool)
                 33 +        // claimer (Option<Pubkey>)
                 32 +        // mint (Pubkey)
-                32,         // token_account (Pubkey)
+                32,          // token_account (Pubkey)
         seeds = [b"vault", payer.key().as_ref(), external_token_id.as_bytes()],
         bump
     )]
     pub vault: Account<'info, Vault>,
-    #[account(mut)]
+    #[account(
+        init,
+        payer = payer,
+        mint::decimals = 0,
+        mint::authority = payer,
+        seeds = [b"vault_mint", external_token_id.as_bytes()],
+        bump
+    )]
     pub mint: Account<'info, Mint>,
-    #[account(mut)]
+    #[account(
+        init_if_needed,
+        payer = payer,
+        associated_token::mint = mint,
+        associated_token::authority = payer,
+    )]
     pub token_account: Account<'info, TokenAccount>,
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
@@ -262,6 +357,17 @@ pub struct MintVault<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub token_metadata_program: AccountInfo<'info>,
     pub program_state: Account<'info, ProgramState>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    /// CHECK: This is not dangerous because we don't read or write from this account
+    pub collection_metadata: AccountInfo<'info>,
+    /// CHECK: This is not dangerous because we don't read or write from this account
+    pub collection_master_edition: AccountInfo<'info>,
+    /// CHECK: This is the authority that can verify the collection
+    #[account(mut)]
+    pub collection_authority: Signer<'info>,
+    /// CHECK: The explicitly passed collection mint account
+    #[account(address = program_state.collection_address)] // Ensure it matches stored collection address
+    pub collection_mint: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]
@@ -283,6 +389,7 @@ pub struct ClaimVault<'info> {
     /// CHECK: This is the account that will receive the fee
     #[account(mut)]
     pub fee_receiver: AccountInfo<'info>,
+    pub program_state: Account<'info, ProgramState>,
     /// CHECK: This account is not dangerous because we only read from it
     #[account(address = InstructionsID)]
     pub instruction_sysvar_account: AccountInfo<'info>,
@@ -307,10 +414,19 @@ pub struct GetBaseUri<'info> {
     pub program_state: Account<'info, ProgramState>,
 }
 
+#[derive(Accounts)]
+pub struct UpdateSignerPublicKey<'info> {
+    #[account(mut)]
+    pub program_state: Account<'info, ProgramState>,
+    pub authority: Signer<'info>,
+}
+
 #[account]
 pub struct ProgramState {
     pub base_uri: String,
     pub authority: Pubkey,
+    pub signer_public_key: Pubkey,
+    pub collection_address: Pubkey,
 }
 
 #[account]
@@ -338,4 +454,8 @@ pub enum VaultError {
     InvalidSignature,
     #[msg("Unauthorized")]
     Unauthorized,
+    #[msg("Invalid signer")]
+    InvalidSigner,
+    #[msg("Invalid collection mint")]
+    InvalidCollectionMint,
 }
