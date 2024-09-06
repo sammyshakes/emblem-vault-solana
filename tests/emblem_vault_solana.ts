@@ -6,10 +6,12 @@ import {
   PublicKey,
   Transaction,
   Ed25519Program,
+  sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import {
   Account,
   createMint,
+  getAssociatedTokenAddress,
   getOrCreateAssociatedTokenAccount,
 } from "@solana/spl-token";
 import nacl from "tweetnacl";
@@ -24,52 +26,98 @@ describe("emblem_vault_solana", () => {
     .EmblemVaultSolana as Program<EmblemVaultSolana>;
 
   let vaultPda: PublicKey;
-  let mintKeypair: Keypair;
-  let tokenAccount: Account;
+  let mintPda: PublicKey;
+  let tokenAccount: PublicKey;
   let payerKeypair: Keypair;
   let feeReceiverKeypair: Keypair;
   let externalTokenId: string;
+  let signerKeypair: Keypair;
+  let metadataPda: PublicKey;
+
+  // Collection PDAs
+  let collectionMint: PublicKey;
+  let collectionMetadataPda: PublicKey;
+  let collectionMasterEditionPda: PublicKey;
 
   const [programStatePda] = PublicKey.findProgramAddressSync(
     [Buffer.from("program_state")],
     program.programId
   );
 
+  // we will use the deployed collection mint address,
+  // which will be stored in program state
+  collectionMint = Keypair.generate().publicKey;
+
+  // Derive PDAs for the vault and mint
+  [vaultPda] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("vault"),
+      payerKeypair.publicKey.toBuffer(),
+      Buffer.from(externalTokenId),
+    ],
+    program.programId
+  );
+
+  [mintPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("vault_mint"), Buffer.from(externalTokenId)],
+    program.programId
+  );
+
+  [metadataPda] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("metadata"),
+      new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s").toBuffer(),
+      mintPda.toBuffer(),
+    ],
+    new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s")
+  );
+
+  // Derive collection metadata PDA
+  [collectionMetadataPda] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("metadata"),
+      new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s").toBuffer(),
+      collectionMint.toBuffer(),
+    ],
+    new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s")
+  );
+
+  // Derive the Master Edition PDA for the collection mint
+  [collectionMasterEditionPda] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("metadata"),
+      new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s").toBuffer(),
+      collectionMint.toBuffer(),
+      Buffer.from("edition"),
+    ],
+    new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s")
+  );
+
+  console.log("programStatePda", programStatePda.toBase58());
+  console.log("program.programId", program.programId.toBase58());
+
   before(async () => {
-    mintKeypair = Keypair.generate();
     payerKeypair = Keypair.generate();
     feeReceiverKeypair = Keypair.generate();
+    signerKeypair = Keypair.generate();
     externalTokenId = "EXT_" + Date.now().toString();
 
+    console.log("payerKeypair", payerKeypair.publicKey.toBase58());
+    console.log("signerKeypair", signerKeypair.publicKey.toBase58());
+    console.log("feeReceiverKeypair", feeReceiverKeypair.publicKey.toBase58());
+    console.log("externalTokenId", externalTokenId);
+
+    // Airdrop SOL to the payer account
     await provider.connection
       .requestAirdrop(payerKeypair.publicKey, 10 * anchor.web3.LAMPORTS_PER_SOL)
       .then((airdropSignature) =>
         provider.connection.confirmTransaction(airdropSignature)
       );
 
-    const mint = await createMint(
-      provider.connection,
-      payerKeypair,
-      payerKeypair.publicKey,
-      null,
-      0,
-      mintKeypair
-    );
-
-    tokenAccount = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      payerKeypair,
-      mint,
+    // Get associated token account for the mint PDA
+    tokenAccount = await getAssociatedTokenAddress(
+      mintPda,
       payerKeypair.publicKey
-    );
-
-    [vaultPda] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("vault"),
-        payerKeypair.publicKey.toBuffer(),
-        Buffer.from(externalTokenId),
-      ],
-      program.programId
     );
   });
 
@@ -77,7 +125,7 @@ describe("emblem_vault_solana", () => {
     const baseUri = "https://example.com/metadata/";
 
     await program.methods
-      .initializeProgram(baseUri)
+      .initializeProgram(baseUri, signerKeypair.publicKey, collectionMint)
       .accounts({
         authority: payerKeypair.publicKey,
       })
@@ -100,8 +148,8 @@ describe("emblem_vault_solana", () => {
     const mintVaultIx = await program.methods
       .mintVault(externalTokenId, price, new anchor.BN(timestamp))
       .accounts({
-        mint: mintKeypair.publicKey,
-        tokenAccount: tokenAccount.address,
+        mint: mintPda,
+        tokenAccount: tokenAccount,
         metadata: Keypair.generate().publicKey, // This is just a placeholder
         payer: payerKeypair.publicKey,
         feeReceiver: feeReceiverKeypair.publicKey,
@@ -143,8 +191,8 @@ describe("emblem_vault_solana", () => {
     const mintVaultIx = await program.methods
       .mintVault(externalTokenId, price, new anchor.BN(timestamp))
       .accounts({
-        mint: mintKeypair.publicKey,
-        tokenAccount: tokenAccount.address,
+        mint: mintPda,
+        tokenAccount: tokenAccount,
         metadata: Keypair.generate().publicKey, // This is just a placeholder
         payer: payerKeypair.publicKey,
         feeReceiver: feeReceiverKeypair.publicKey,
@@ -170,19 +218,10 @@ describe("emblem_vault_solana", () => {
     const timestamp = Math.floor(Date.now() / 1000);
     const message = `mint:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
     const messageBytes = decodeUTF8(message);
-    const signature = nacl.sign.detached(messageBytes, payerKeypair.secretKey);
-
-    const [metadataPda] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("metadata"),
-        new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s").toBuffer(),
-        mintKeypair.publicKey.toBuffer(),
-      ],
-      new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s")
-    );
+    const signature = nacl.sign.detached(messageBytes, signerKeypair.secretKey);
 
     const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
-      publicKey: payerKeypair.publicKey.toBytes(),
+      publicKey: signerKeypair.publicKey.toBytes(),
       message: messageBytes,
       signature: signature,
     });
@@ -190,13 +229,15 @@ describe("emblem_vault_solana", () => {
     const mintVaultIx = await program.methods
       .mintVault(externalTokenId, price, new anchor.BN(timestamp))
       .accounts({
-        vault: vaultPda,
-        mint: mintKeypair.publicKey,
-        tokenAccount: tokenAccount.address,
+        mint: mintPda,
+        tokenAccount: tokenAccount,
         metadata: metadataPda,
         payer: payerKeypair.publicKey,
         feeReceiver: feeReceiverKeypair.publicKey,
         programState: programStatePda,
+        collectionMint: collectionMint,
+        collectionMetadata: collectionMetadataPda,
+        collectionMasterEdition: collectionMasterEditionPda,
         tokenMetadataProgram: new PublicKey(
           "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         ),
@@ -207,7 +248,7 @@ describe("emblem_vault_solana", () => {
     await provider.sendAndConfirm(transaction, [payerKeypair]);
 
     const tokenAccountInfo = await provider.connection.getTokenAccountBalance(
-      tokenAccount.address
+      tokenAccount
     );
     expect(new anchor.BN(tokenAccountInfo.value.amount).eq(new anchor.BN(1))).to
       .be.true;
@@ -219,11 +260,9 @@ describe("emblem_vault_solana", () => {
     expect(vaultAccount.owner.toString()).to.equal(
       payerKeypair.publicKey.toString()
     );
-    expect(vaultAccount.mint.toString()).to.equal(
-      mintKeypair.publicKey.toString()
-    );
+    expect(vaultAccount.mint.toString()).to.equal(mintPda.toString());
     expect(vaultAccount.tokenAccount.toString()).to.equal(
-      tokenAccount.address.toString()
+      tokenAccount.toString()
     );
   });
 
@@ -232,10 +271,10 @@ describe("emblem_vault_solana", () => {
     const timestamp = Math.floor(Date.now() / 1000);
     const message = `claim:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
     const messageBytes = decodeUTF8(message);
-    const signature = nacl.sign.detached(messageBytes, payerKeypair.secretKey);
+    const signature = nacl.sign.detached(messageBytes, signerKeypair.secretKey);
 
     const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
-      publicKey: payerKeypair.publicKey.toBytes(),
+      publicKey: signerKeypair.publicKey.toBytes(),
       message: messageBytes,
       signature: signature,
     });
@@ -244,8 +283,8 @@ describe("emblem_vault_solana", () => {
       .claimVault(externalTokenId, price, new anchor.BN(timestamp))
       .accounts({
         vault: vaultPda,
-        mint: mintKeypair.publicKey,
-        tokenAccount: tokenAccount.address,
+        mint: mintPda,
+        tokenAccount: tokenAccount,
         claimer: payerKeypair.publicKey,
         feeReceiver: feeReceiverKeypair.publicKey,
       })
@@ -255,7 +294,7 @@ describe("emblem_vault_solana", () => {
     await provider.sendAndConfirm(transaction, [payerKeypair]);
 
     const tokenAccountInfo = await provider.connection.getTokenAccountBalance(
-      tokenAccount.address
+      tokenAccount
     );
     expect(tokenAccountInfo.value.uiAmount).to.equal(0);
 
