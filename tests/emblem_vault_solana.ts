@@ -1,22 +1,20 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { EmblemVaultSolana } from "../target/types/emblem_vault_solana";
 import { expect } from "chai";
 import {
   Keypair,
   PublicKey,
   Transaction,
-  SystemProgram,
   Ed25519Program,
 } from "@solana/web3.js";
 import {
+  Account,
   createMint,
   getOrCreateAssociatedTokenAccount,
-  Account,
-  TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import nacl from "tweetnacl";
 import { decodeUTF8 } from "tweetnacl-util";
+import { EmblemVaultSolana } from "../target/types/emblem_vault_solana";
 
 describe("emblem_vault_solana", () => {
   const provider = anchor.AnchorProvider.env();
@@ -31,6 +29,11 @@ describe("emblem_vault_solana", () => {
   let payerKeypair: Keypair;
   let feeReceiverKeypair: Keypair;
   let externalTokenId: string;
+
+  const [programStatePda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("program_state")],
+    program.programId
+  );
 
   before(async () => {
     mintKeypair = Keypair.generate();
@@ -70,27 +73,39 @@ describe("emblem_vault_solana", () => {
     );
   });
 
+  it("Initializes program state", async () => {
+    const baseUri = "https://example.com/metadata/";
+
+    await program.methods
+      .initializeProgram(baseUri)
+      .accounts({
+        authority: payerKeypair.publicKey,
+      })
+      .signers([payerKeypair])
+      .rpc();
+
+    const programState = await program.account.programState.fetch(
+      programStatePda
+    );
+    expect(programState.baseUri).to.equal(baseUri);
+    expect(programState.authority.toString()).to.equal(
+      payerKeypair.publicKey.toString()
+    );
+  });
+
   it("Fails to mint a vault NFT without signature verification", async () => {
     const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL);
     const timestamp = Math.floor(Date.now() / 1000);
-    const metadataUri = "https://example.com/token-metadata";
 
     const mintVaultIx = await program.methods
-      .mintVault(
-        externalTokenId,
-        price,
-        "No Sig Vault",
-        "NOSIG",
-        metadataUri,
-        new anchor.BN(timestamp)
-      )
+      .mintVault(externalTokenId, price, new anchor.BN(timestamp))
       .accounts({
-        vault: vaultPda,
         mint: mintKeypair.publicKey,
         tokenAccount: tokenAccount.address,
         metadata: Keypair.generate().publicKey, // This is just a placeholder
         payer: payerKeypair.publicKey,
         feeReceiver: feeReceiverKeypair.publicKey,
+        programState: programStatePda,
         tokenMetadataProgram: new PublicKey(
           "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         ),
@@ -126,21 +141,14 @@ describe("emblem_vault_solana", () => {
     });
 
     const mintVaultIx = await program.methods
-      .mintVault(
-        externalTokenId,
-        price,
-        "Invalid Vault",
-        "INVALID",
-        "https://example.com/invalid-metadata",
-        new anchor.BN(timestamp)
-      )
+      .mintVault(externalTokenId, price, new anchor.BN(timestamp))
       .accounts({
-        vault: vaultPda,
         mint: mintKeypair.publicKey,
         tokenAccount: tokenAccount.address,
         metadata: Keypair.generate().publicKey, // This is just a placeholder
         payer: payerKeypair.publicKey,
         feeReceiver: feeReceiverKeypair.publicKey,
+        programState: programStatePda,
         tokenMetadataProgram: new PublicKey(
           "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         ),
@@ -158,14 +166,13 @@ describe("emblem_vault_solana", () => {
   });
 
   it("Mints a vault NFT", async () => {
-    const metadataUri = "https://example.com/token-metadata";
     const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL fee
     const timestamp = Math.floor(Date.now() / 1000);
     const message = `mint:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
     const messageBytes = decodeUTF8(message);
     const signature = nacl.sign.detached(messageBytes, payerKeypair.secretKey);
 
-    const [metadataPda] = await PublicKey.findProgramAddress(
+    const [metadataPda] = PublicKey.findProgramAddressSync(
       [
         Buffer.from("metadata"),
         new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s").toBuffer(),
@@ -181,14 +188,7 @@ describe("emblem_vault_solana", () => {
     });
 
     const mintVaultIx = await program.methods
-      .mintVault(
-        externalTokenId,
-        price,
-        "Test Vault",
-        "VAULT",
-        metadataUri,
-        new anchor.BN(timestamp)
-      )
+      .mintVault(externalTokenId, price, new anchor.BN(timestamp))
       .accounts({
         vault: vaultPda,
         mint: mintKeypair.publicKey,
@@ -196,6 +196,7 @@ describe("emblem_vault_solana", () => {
         metadata: metadataPda,
         payer: payerKeypair.publicKey,
         feeReceiver: feeReceiverKeypair.publicKey,
+        programState: programStatePda,
         tokenMetadataProgram: new PublicKey(
           "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         ),
@@ -290,5 +291,59 @@ describe("emblem_vault_solana", () => {
       expect(claimer.toString()).to.equal(vaultAccount.claimer.toString());
       // console.log("claimer", claimer);
     }
+  });
+
+  it("Updates base URI by authority", async () => {
+    const newBaseUri = "https://newexample.com/metadata/";
+
+    // Call setBaseUri from the authority (payerKeypair in this case)
+    await program.methods
+      .setBaseUri(newBaseUri)
+      .accounts({
+        programState: programStatePda,
+        authority: payerKeypair.publicKey,
+      })
+      .signers([payerKeypair])
+      .rpc();
+
+    // Fetch the updated program state and assert the base URI is updated
+    const updatedProgramState = await program.account.programState.fetch(
+      programStatePda
+    );
+    expect(updatedProgramState.baseUri).to.equal(newBaseUri);
+  });
+
+  it("Fails to update base URI by unauthorized account", async () => {
+    const unauthorizedKeypair = Keypair.generate();
+    const newBaseUri = "https://unauthorized.com/metadata/";
+
+    try {
+      // Attempt to call setBaseUri from an unauthorized account
+      await program.methods
+        .setBaseUri(newBaseUri)
+        .accounts({
+          programState: programStatePda,
+          authority: unauthorizedKeypair.publicKey,
+        })
+        .signers([unauthorizedKeypair])
+        .rpc();
+
+      throw new Error(
+        "The unauthorized update should have failed but succeeded!"
+      );
+    } catch (error) {
+      // Assert the exact error code and message
+      expect(error.message).to.include("Error Code: Unauthorized");
+      expect(error.message).to.include("Error Number: 6005");
+      expect(error.message).to.include("Unauthorized");
+    }
+
+    // Verify that the base URI has not changed
+    const programState = await program.account.programState.fetch(
+      programStatePda
+    );
+    expect(programState.baseUri).to.not.equal(
+      "https://unauthorized.com/metadata/"
+    );
   });
 });

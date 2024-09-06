@@ -6,6 +6,7 @@
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",
+    "dotenv": "^16.4.5",
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1"
   },

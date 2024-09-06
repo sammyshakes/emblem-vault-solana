@@ -14,18 +14,22 @@ declare_id!("DMLBNjTTdxA3Tnbx21ZsQU3hX1VUSW4SENPb3HCZrBCr");
 pub mod emblem_vault_solana {
     use super::*;
 
+    pub fn initialize_program(ctx: Context<InitializeProgram>, base_uri: String) -> Result<()> {
+        let program_state = &mut ctx.accounts.program_state;
+        program_state.base_uri = base_uri;
+        program_state.authority = ctx.accounts.authority.key();
+        Ok(())
+    }
+
     pub fn mint_vault(
         ctx: Context<MintVault>,
         external_token_id: String,
         price: u64,
-        name: String,
-        symbol: String,
-        uri: String,
         timestamp: i64,
     ) -> Result<()> {
         msg!("Minting vault NFT...");
 
-        // Load the previous instruction
+        // Verify the signature verification instruction was called
         let previous_ix = load_instruction_at_checked(0, &ctx.accounts.instruction_sysvar_account.to_account_info())?;
         if previous_ix.program_id != ed25519_program::ID {
             return Err(VaultError::InvalidSignature.into());
@@ -61,6 +65,11 @@ pub mod emblem_vault_solana {
             ),
             1,
         )?;
+
+        // // Generate metadata
+        let name = format!("Emblem Vault {}", external_token_id);
+        let symbol = generate_symbol(&external_token_id);
+        let uri = format!("{}{}", ctx.accounts.program_state.base_uri, external_token_id);
 
         // Create metadata
         let data = DataV2 {
@@ -116,7 +125,7 @@ pub mod emblem_vault_solana {
     ) -> Result<()> {
         msg!("Claiming vault...");
         
-        // Load the previous instruction
+        // Verify the signature verification instruction was called
         let previous_ix = load_instruction_at_checked(0, &ctx.accounts.instruction_sysvar_account.to_account_info())?;
         if previous_ix.program_id != ed25519_program::ID {
             return Err(VaultError::InvalidSignature.into());
@@ -165,6 +174,13 @@ pub mod emblem_vault_solana {
         Ok(())
     }
 
+    pub fn set_base_uri(ctx: Context<SetBaseUri>, new_base_uri: String) -> Result<()> {
+        let program_state = &mut ctx.accounts.program_state;
+        require!(ctx.accounts.authority.key() == program_state.authority, VaultError::Unauthorized);
+        program_state.base_uri = new_base_uri;
+        Ok(())
+    }
+
     // Query functions
     pub fn is_claimed(ctx: Context<QueryVault>) -> Result<bool> {
         Ok(ctx.accounts.vault.is_claimed)
@@ -177,15 +193,50 @@ pub mod emblem_vault_solana {
     pub fn get_claimer(ctx: Context<QueryVault>) -> Result<Option<Pubkey>> {
         Ok(ctx.accounts.vault.claimer)
     }
+
+    pub fn get_base_uri(ctx: Context<GetBaseUri>) -> Result<String> {
+        Ok(ctx.accounts.program_state.base_uri.clone())
+    }
+}
+
+ // Helper function to generate a symbol
+ fn generate_symbol(external_token_id: &str) -> String {
+    let prefix = "EV";
+    let suffix: String = external_token_id.chars().filter(|c| c.is_ascii_alphanumeric()).take(3).collect();
+    format!("{}{}", prefix, suffix).to_uppercase()
 }
 
 #[derive(Accounts)]
-#[instruction(external_token_id: String, price: u64, name: String, symbol: String, uri: String, timestamp: i64)]
+pub struct InitializeProgram<'info> {
+    #[account(
+        init,
+        payer = authority,
+        space = 8 +     // discriminator
+                200 +   // base_uri (String)
+                32,     // authority (Pubkey)
+        seeds = [b"program_state"],
+        bump
+    )]
+    pub program_state: Account<'info, ProgramState>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(external_token_id: String, price: u64, timestamp: i64)]
 pub struct MintVault<'info> {
     #[account(
         init,
         payer = payer,
-        space = 8 + 32 + 4 + 200 + 1 + 1 + 33 + 32 + 32, // Adjust space as needed
+        space = 8 +         // discriminator
+                32 +        // owner (Pubkey)
+                4 + 200 +   // external_token_id (String)
+                1 +         // is_minted (bool)
+                1 +         // is_claimed (bool)
+                33 +        // claimer (Option<Pubkey>)
+                32 +        // mint (Pubkey)
+                32,         // token_account (Pubkey)
         seeds = [b"vault", payer.key().as_ref(), external_token_id.as_bytes()],
         bump
     )]
@@ -210,6 +261,7 @@ pub struct MintVault<'info> {
     pub token_program: Program<'info, Token>,
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub token_metadata_program: AccountInfo<'info>,
+    pub program_state: Account<'info, ProgramState>,
 }
 
 #[derive(Accounts)]
@@ -243,6 +295,24 @@ pub struct QueryVault<'info> {
     pub vault: Account<'info, Vault>,
 }
 
+#[derive(Accounts)]
+pub struct SetBaseUri<'info> {
+    #[account(mut)]
+    pub program_state: Account<'info, ProgramState>,
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct GetBaseUri<'info> {
+    pub program_state: Account<'info, ProgramState>,
+}
+
+#[account]
+pub struct ProgramState {
+    pub base_uri: String,
+    pub authority: Pubkey,
+}
+
 #[account]
 pub struct Vault {
     pub owner: Pubkey,
@@ -266,4 +336,6 @@ pub enum VaultError {
     InvalidExternalTokenId,
     #[msg("Invalid signature")]
     InvalidSignature,
+    #[msg("Unauthorized")]
+    Unauthorized,
 }
