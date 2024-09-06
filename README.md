@@ -1,7 +1,3 @@
-Here's the modified version of your README, keeping your structure while adding the new features, scripts, and tests.
-
----
-
 # Solana Emblem Vault: Project Checklist
 
 ## Solana Program
