@@ -14,10 +14,11 @@ declare_id!("DMLBNjTTdxA3Tnbx21ZsQU3hX1VUSW4SENPb3HCZrBCr");
 pub mod emblem_vault_solana {
     use super::*;
 
-    pub fn initialize_program(ctx: Context<InitializeProgram>, base_uri: String) -> Result<()> {
+    pub fn initialize_program(ctx: Context<InitializeProgram>, base_uri: String, signer: Pubkey) -> Result<()> {
         let program_state = &mut ctx.accounts.program_state;
         program_state.base_uri = base_uri;
         program_state.authority = ctx.accounts.authority.key();
+        program_state.authority = signer;
         Ok(())
     }
 
