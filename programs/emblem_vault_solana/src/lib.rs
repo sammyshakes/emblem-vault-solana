@@ -220,6 +220,12 @@ pub mod emblem_vault_solana {
     pub fn get_base_uri(ctx: Context<GetBaseUri>) -> Result<String> {
         Ok(ctx.accounts.program_state.base_uri.clone())
     }
+
+    pub fn update_signer_public_key(ctx: Context<UpdateSignerPublicKey>, new_signer_public_key: Pubkey) -> Result<()> {
+        require!(ctx.accounts.authority.key() == ctx.accounts.program_state.authority, VaultError::Unauthorized);
+        ctx.accounts.program_state.signer_public_key = new_signer_public_key;
+        Ok(())
+    }
 }
 
  // Helper function to generate a symbol
