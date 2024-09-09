@@ -15,6 +15,7 @@ import {
 import nacl from "tweetnacl";
 import { decodeUTF8 } from "tweetnacl-util";
 import { EmblemVaultSolana } from "../target/types/emblem_vault_solana";
+import { token } from "@coral-xyz/anchor/dist/cjs/utils";
 
 describe("emblem_vault_solana", () => {
   const provider = anchor.AnchorProvider.env();
@@ -413,5 +414,143 @@ describe("emblem_vault_solana", () => {
     expect(programState.baseUri).to.not.equal(
       "https://unauthorized.com/metadata/"
     );
+  });
+
+  it("Updates the signer public key and verifies the change", async () => {
+    const newSignerKeypair = Keypair.generate(); // New signer public key
+    const oldSignerKeypair = signerKeypair; // Reference to the old signer
+
+    // Step 1: Update signer public key using the authority
+    await program.methods
+      .updateSignerPublicKey(newSignerKeypair.publicKey)
+      .accounts({
+        programState: programStatePda,
+        authority: payerKeypair.publicKey, // Authority is the payer
+      })
+      .signers([payerKeypair]) // Authority signer
+      .rpc();
+
+    // Fetch the updated program state to verify the signer public key change
+    const updatedProgramState = await program.account.programState.fetch(
+      programStatePda
+    );
+    expect(updatedProgramState.signerPublicKey.toString()).to.equal(
+      newSignerKeypair.publicKey.toString()
+    );
+
+    // Step 2: Generate a new external token ID
+    const newExternalTokenId = "EXT1_" + Date.now().toString();
+
+    // Recalculate the PDA based on the new external token ID
+    const [newVaultPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("vault"),
+        payerKeypair.publicKey.toBuffer(),
+        Buffer.from(newExternalTokenId),
+      ],
+      program.programId
+    );
+
+    // Create a new mint keypair, metadata and token account for the new vault
+    mintKeypair = Keypair.generate();
+    const mint = await createMint(
+      provider.connection,
+      payerKeypair,
+      payerKeypair.publicKey,
+      null,
+      0,
+      mintKeypair
+    );
+
+    tokenAccount = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      payerKeypair,
+      mint,
+      payerKeypair.publicKey
+    );
+
+    const [metadataPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("metadata"),
+        new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s").toBuffer(),
+        mintKeypair.publicKey.toBuffer(),
+      ],
+      new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s")
+    );
+
+    // Attempt to mint using the old signer, it should fail
+    const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL fee
+    const timestamp = Math.floor(Date.now() / 1000);
+    const message = `mint:${newVaultPda.toBase58()}:${price.toString()}:${timestamp}:${newExternalTokenId}`;
+    const messageBytes = decodeUTF8(message);
+    const oldSignature = nacl.sign.detached(
+      messageBytes,
+      oldSignerKeypair.secretKey
+    ); // Old signer's signature
+
+    const verifyOldSignatureIx = Ed25519Program.createInstructionWithPublicKey({
+      publicKey: oldSignerKeypair.publicKey.toBytes(),
+      message: messageBytes,
+      signature: oldSignature,
+    });
+
+    const mintVaultIx = await program.methods
+      .mintVault(newExternalTokenId, price, new anchor.BN(timestamp))
+      .accounts({
+        vault: newVaultPda,
+        mint: mintKeypair.publicKey,
+        tokenAccount: tokenAccount.address,
+        metadata: metadataPda,
+        payer: payerKeypair.publicKey,
+        feeReceiver: feeReceiverKeypair.publicKey,
+        programState: programStatePda,
+        tokenMetadataProgram: new PublicKey(
+          "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+        ),
+      })
+      .instruction();
+
+    const oldTransaction = new Transaction().add(
+      verifyOldSignatureIx,
+      mintVaultIx
+    );
+
+    try {
+      await provider.sendAndConfirm(oldTransaction, [payerKeypair]);
+      throw new Error(
+        "Minting should have failed with the old signer but it succeeded!"
+      );
+    } catch (error) {
+      // console.error("Transaction Error:", error.message);
+      expect(error.message).to.include("Invalid signer");
+    }
+
+    // Step 3: Attempt to mint using the new signer, it should succeed
+    const newSignature = nacl.sign.detached(
+      messageBytes,
+      newSignerKeypair.secretKey
+    ); // New signer's signature
+
+    const verifyNewSignatureIx = Ed25519Program.createInstructionWithPublicKey({
+      publicKey: newSignerKeypair.publicKey.toBytes(),
+      message: messageBytes,
+      signature: newSignature,
+    });
+
+    const newTransaction = new Transaction().add(
+      verifyNewSignatureIx,
+      mintVaultIx
+    );
+    await provider.sendAndConfirm(newTransaction, [payerKeypair]);
+
+    // Verify that the vault was successfully minted
+    const tokenAccountInfo = await provider.connection.getTokenAccountBalance(
+      tokenAccount.address
+    );
+    expect(new anchor.BN(tokenAccountInfo.value.amount).eq(new anchor.BN(1))).to
+      .be.true;
+
+    const vaultAccount = await program.account.vault.fetch(newVaultPda);
+    expect(vaultAccount.isMinted).to.be.true;
   });
 });
