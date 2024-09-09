@@ -141,6 +141,55 @@ describe("emblem_vault_solana", () => {
     }
   });
 
+  it("Fails to mint a vault NFT with a valid signature but unauthorized signer", async () => {
+    const unauthorizedSigner = Keypair.generate(); // New keypair for unauthorized signer
+    const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL fee
+    const timestamp = Math.floor(Date.now() / 1000);
+    const message = `mint:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
+    const messageBytes = decodeUTF8(message);
+
+    // Sign the message with the unauthorized signer's keypair
+    const signature = nacl.sign.detached(
+      messageBytes,
+      unauthorizedSigner.secretKey
+    );
+
+    const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
+      publicKey: unauthorizedSigner.publicKey.toBytes(),
+      message: messageBytes,
+      signature: signature,
+    });
+
+    const mintVaultIx = await program.methods
+      .mintVault(externalTokenId, price, new anchor.BN(timestamp))
+      .accounts({
+        mint: mintKeypair.publicKey,
+        tokenAccount: tokenAccount.address,
+        metadata: Keypair.generate().publicKey, // This is just a placeholder
+        payer: payerKeypair.publicKey,
+        feeReceiver: feeReceiverKeypair.publicKey,
+        programState: programStatePda,
+        tokenMetadataProgram: new PublicKey(
+          "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+        ),
+      })
+      .instruction();
+
+    const transaction = new Transaction().add(verifySignatureIx, mintVaultIx);
+
+    try {
+      // Attempt to send the transaction with the unauthorized signer
+      await provider.sendAndConfirm(transaction, [
+        payerKeypair,
+        unauthorizedSigner,
+      ]);
+      throw new Error("Minting should have failed but it succeeded!");
+    } catch (error) {
+      // console.error("Transaction Error:", error.message);
+      expect(error.message).to.include("unknown signer");
+    }
+  });
+
   it("Fails to mint a vault NFT with an invalid signature", async () => {
     const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL);
     const timestamp = Math.floor(Date.now() / 1000);
