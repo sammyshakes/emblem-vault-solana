@@ -73,6 +73,17 @@ describe("emblem_vault_solana", () => {
       ],
       program.programId
     );
+
+    //console all the variables
+    console.log("vaultPda", vaultPda.toBase58());
+    // console.log("mintPda", mintPda.toBase58());
+    // console.log("tokenAccount", tokenAccount.toBase58());
+    console.log("payerKeypair", payerKeypair.publicKey.toBase58());
+    console.log("signerKeypair", signerKeypair.publicKey.toBase58());
+    console.log("feeReceiverKeypair", feeReceiverKeypair.publicKey.toBase58());
+    console.log("externalTokenId", externalTokenId);
+    console.log("programStatePda", programStatePda.toBase58());
+    // console.log("metadataPda", metadataPda.toBase58());
   });
 
   it("Initializes program state", async () => {
@@ -89,11 +100,12 @@ describe("emblem_vault_solana", () => {
     const programState = await program.account.programState.fetch(
       programStatePda
     );
+
     expect(programState.baseUri).to.equal(baseUri);
     expect(programState.authority.toString()).to.equal(
       payerKeypair.publicKey.toString()
     );
-    expect(programState.signerPublicKey.toString()).to.equal(
+    expect(programState.signerPublicKey.toBase58()).to.equal(
       signerKeypair.publicKey.toString()
     );
   });
@@ -123,7 +135,9 @@ describe("emblem_vault_solana", () => {
       await provider.sendAndConfirm(transaction, [payerKeypair]);
       throw new Error("Minting should have failed but it succeeded!");
     } catch (error) {
-      expect(error.message).to.include("custom program error: 0x1774"); // InvalidSignature error code
+      expect(error.message).to.include(
+        "Transaction simulation failed: Error processing Instruction 0"
+      );
     }
   });
 

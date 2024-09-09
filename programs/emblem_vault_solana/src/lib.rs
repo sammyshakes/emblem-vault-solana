@@ -18,7 +18,7 @@ pub mod emblem_vault_solana {
         let program_state = &mut ctx.accounts.program_state;
         program_state.base_uri = base_uri;
         program_state.authority = ctx.accounts.authority.key();
-        program_state.authority = signer;
+        program_state.signer_public_key = signer;
         Ok(())
     }
 
