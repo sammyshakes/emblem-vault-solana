@@ -337,6 +337,14 @@ pub struct GetBaseUri<'info> {
     pub program_state: Account<'info, ProgramState>,
 }
 
+
+#[derive(Accounts)]
+pub struct UpdateSignerPublicKey<'info> {
+    #[account(mut)]
+    pub program_state: Account<'info, ProgramState>,
+    pub authority: Signer<'info>,
+}
+
 #[account]
 pub struct ProgramState {
     pub base_uri: String,
