@@ -553,4 +553,57 @@ describe("emblem_vault_solana", () => {
     const vaultAccount = await program.account.vault.fetch(newVaultPda);
     expect(vaultAccount.isMinted).to.be.true;
   });
+
+  it("Fails to update signer public key by unauthorized account", async () => {
+    const unauthorizedKeypair = Keypair.generate(); // Generate a new unauthorized keypair
+    const newSignerKeypair = Keypair.generate(); // New signer public key
+
+    try {
+      // Attempt to update the signer public key using an unauthorized account
+      await program.methods
+        .updateSignerPublicKey(newSignerKeypair.publicKey)
+        .accounts({
+          programState: programStatePda,
+          authority: unauthorizedKeypair.publicKey, // Unauthorized authority
+        })
+        .signers([unauthorizedKeypair]) // Sign the transaction with the unauthorized keypair
+        .rpc();
+
+      throw new Error("Unauthorized update should have failed but succeeded!");
+    } catch (error) {
+      // Check that the error is the expected "Unauthorized" error
+      expect(error.message).to.include("Error Code: Unauthorized");
+      expect(error.message).to.include("Error Number: 6005");
+    }
+
+    // Fetch the program state and ensure the signer public key wasn't updated
+    const programState = await program.account.programState.fetch(
+      programStatePda
+    );
+    expect(programState.signerPublicKey.toString()).to.not.equal(
+      newSignerKeypair.publicKey.toString()
+    );
+  });
+
+  it("Successfully updates signer public key by the authorized authority", async () => {
+    const newSignerKeypair = Keypair.generate(); // New signer public key
+
+    // Call update_signer_public_key from the authorized authority (payerKeypair in this case)
+    await program.methods
+      .updateSignerPublicKey(newSignerKeypair.publicKey)
+      .accounts({
+        programState: programStatePda,
+        authority: payerKeypair.publicKey, // Authorized authority
+      })
+      .signers([payerKeypair]) // Authority signer
+      .rpc();
+
+    // Fetch the updated program state and assert the signer public key is updated
+    const updatedProgramState = await program.account.programState.fetch(
+      programStatePda
+    );
+    expect(updatedProgramState.signerPublicKey.toString()).to.equal(
+      newSignerKeypair.publicKey.toString()
+    );
+  });
 });
