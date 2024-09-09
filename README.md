@@ -8,7 +8,7 @@
 - [x] Signature verification implementation
 - [x] Complete `mint_vault` function
 - [x] Complete `claim_vault` function
-- [ ] Implement `update_signer_public_key` function
+- [x] Implement `update_signer_public_key` function
 - [x] Add metadata support
 - [x] Comprehensive error handling
 - [x] Set and update base URI
@@ -21,10 +21,12 @@
 - [x] Signature verification test
 - [x] Add test for `mint_vault` function
 - [x] Add test for `claim_vault` function
-- [x] Add tests for error cases and edge scenarios,
+- [x] Add tests for error cases and edge scenarios
 - [x] Add invalid signature test and missing signature verification
 - [x] Add test for base URI update
 - [x] Add test for unauthorized base URI update
+- [x] Add test for `update_signer_public_key` function
+- [x] Add test for unauthorized signer update
 
 ## API/SDK Layer
 
@@ -65,16 +67,20 @@
 ### Current Test Results
 
 ```bash
-✔ Initializes program state (412ms)
-✔ Fails to mint a vault NFT without signature verification (40ms)
-✔ Fails to mint a vault NFT with an invalid signature (50ms)
-✔ Mints a vault NFT (302ms)
-✔ Claims a vault NFT (413ms)
-✔ Queries vault information (39ms)
-✔ Updates base URI by authority (374ms)
-✔ Fails to update base URI by unauthorized account (45ms)
+✔ Initializes program state (416ms)
+✔ Fails to mint a vault NFT without signature verification
+✔ Fails to mint a vault NFT with a valid signature but unauthorized signer
+✔ Fails to mint a vault NFT with an invalid signature
+✔ Mints a vault NFT (331ms)
+✔ Claims a vault NFT (408ms)
+✔ Queries vault information
+✔ Updates base URI by authority (397ms)
+✔ Fails to update base URI by unauthorized account
+✔ Updates the signer public key and verifies the change (1637ms)
+✔ Fails to update signer public key by unauthorized account
+✔ Successfully updates signer public key by the authorized authority (388ms)
 
-8 passing (2s)
+12 passing (5s)
 ```
 
 ---
