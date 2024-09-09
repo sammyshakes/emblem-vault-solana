@@ -31,10 +31,32 @@ pub mod emblem_vault_solana {
         msg!("Minting vault NFT...");
 
         // Verify the signature verification instruction was called
-        let previous_ix = load_instruction_at_checked(0, &ctx.accounts.instruction_sysvar_account.to_account_info())?;
-        if previous_ix.program_id != ed25519_program::ID {
-            return Err(VaultError::InvalidSignature.into());
+        msg!("Attempting to load previous instruction");
+        let previous_ix = match load_instruction_at_checked(0, &ctx.accounts.instruction_sysvar_account.to_account_info()) {
+            Ok(ix) => {
+                msg!("Previous instruction loaded successfully");
+                ix
+            },
+            Err(e) => {
+                msg!("Error loading previous instruction: {:?}", e);
+                return Err(e.into());
+            }
+        };
+        msg!("Previous instruction program ID: {}", previous_ix.program_id);
+
+        // // Extract the public key from the previous instruction
+        let ed25519_ix_data = previous_ix.data;
+        let pubkey_bytes = &ed25519_ix_data[16..48]; // public key is at slice 16..48, there exists a more elegant way with [ed25519_pubkey_offset..ed25519_pubkey_offset + 32]
+        let verification_public_key = Pubkey::new_from_array(pubkey_bytes.try_into().unwrap());
+        msg!("Verification public key: {}", verification_public_key);
+
+        // Check if the verification public key matches the stored signer public key
+        msg!("Stored signer public key: {}", ctx.accounts.program_state.signer_public_key);
+        if verification_public_key != ctx.accounts.program_state.signer_public_key {
+            msg!("Invalid signer: Verification key does not match stored signer key");
+            return Err(VaultError::InvalidSigner.into());
         }
+
 
         // Check if the approval has expired (15-minute validity)
         let current_time = Clock::get()?.unix_timestamp;
@@ -214,7 +236,8 @@ pub struct InitializeProgram<'info> {
         payer = authority,
         space = 8 +     // discriminator
                 200 +   // base_uri (String)
-                32,     // authority (Pubkey)
+                32 +     // authority (Pubkey)
+                32,      // signer_public_key (Pubkey)
         seeds = [b"program_state"],
         bump
     )]
@@ -312,6 +335,7 @@ pub struct GetBaseUri<'info> {
 pub struct ProgramState {
     pub base_uri: String,
     pub authority: Pubkey,
+    pub signer_public_key: Pubkey,
 }
 
 #[account]
@@ -339,4 +363,6 @@ pub enum VaultError {
     InvalidSignature,
     #[msg("Unauthorized")]
     Unauthorized,
+    #[msg("Invalid signer")]
+    InvalidSigner,
 }
