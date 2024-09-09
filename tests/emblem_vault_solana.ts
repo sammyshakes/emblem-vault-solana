@@ -27,6 +27,7 @@ describe("emblem_vault_solana", () => {
   let mintKeypair: Keypair;
   let tokenAccount: Account;
   let payerKeypair: Keypair;
+  let signerKeypair: Keypair;
   let feeReceiverKeypair: Keypair;
   let externalTokenId: string;
 
@@ -38,6 +39,7 @@ describe("emblem_vault_solana", () => {
   before(async () => {
     mintKeypair = Keypair.generate();
     payerKeypair = Keypair.generate();
+    signerKeypair = Keypair.generate();
     feeReceiverKeypair = Keypair.generate();
     externalTokenId = "EXT_" + Date.now().toString();
 
@@ -77,7 +79,7 @@ describe("emblem_vault_solana", () => {
     const baseUri = "https://example.com/metadata/";
 
     await program.methods
-      .initializeProgram(baseUri)
+      .initializeProgram(baseUri, signerKeypair.publicKey)
       .accounts({
         authority: payerKeypair.publicKey,
       })
@@ -90,6 +92,9 @@ describe("emblem_vault_solana", () => {
     expect(programState.baseUri).to.equal(baseUri);
     expect(programState.authority.toString()).to.equal(
       payerKeypair.publicKey.toString()
+    );
+    expect(programState.signerPublicKey.toString()).to.equal(
+      signerKeypair.publicKey.toString()
     );
   });
 
@@ -131,11 +136,11 @@ describe("emblem_vault_solana", () => {
     const tamperedMessageBytes = decodeUTF8("tampered_message");
     const invalidSignature = nacl.sign.detached(
       tamperedMessageBytes,
-      payerKeypair.secretKey
+      signerKeypair.secretKey
     );
 
     const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
-      publicKey: payerKeypair.publicKey.toBytes(),
+      publicKey: signerKeypair.publicKey.toBytes(),
       message: messageBytes,
       signature: invalidSignature,
     });
@@ -170,7 +175,7 @@ describe("emblem_vault_solana", () => {
     const timestamp = Math.floor(Date.now() / 1000);
     const message = `mint:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
     const messageBytes = decodeUTF8(message);
-    const signature = nacl.sign.detached(messageBytes, payerKeypair.secretKey);
+    const signature = nacl.sign.detached(messageBytes, signerKeypair.secretKey);
 
     const [metadataPda] = PublicKey.findProgramAddressSync(
       [
@@ -182,7 +187,7 @@ describe("emblem_vault_solana", () => {
     );
 
     const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
-      publicKey: payerKeypair.publicKey.toBytes(),
+      publicKey: signerKeypair.publicKey.toBytes(),
       message: messageBytes,
       signature: signature,
     });
@@ -232,10 +237,10 @@ describe("emblem_vault_solana", () => {
     const timestamp = Math.floor(Date.now() / 1000);
     const message = `claim:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
     const messageBytes = decodeUTF8(message);
-    const signature = nacl.sign.detached(messageBytes, payerKeypair.secretKey);
+    const signature = nacl.sign.detached(messageBytes, signerKeypair.secretKey);
 
     const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
-      publicKey: payerKeypair.publicKey.toBytes(),
+      publicKey: signerKeypair.publicKey.toBytes(),
       message: messageBytes,
       signature: signature,
     });
