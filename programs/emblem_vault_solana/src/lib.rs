@@ -1,12 +1,11 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Mint, Token, TokenAccount};
-use anchor_spl::metadata::{
-    create_metadata_accounts_v3,
-    mpl_token_metadata::types::{Creator, DataV2},
-    CreateMetadataAccountsV3,
+
+use mpl_core::{
+    ID as MPL_CORE_PROGRAM_ID,
+    accounts::BaseCollectionV1, 
+    types::{PluginAuthorityPair, Plugin, PermanentFreezeDelegate}, 
+    instructions::{CreateV2CpiBuilder, CreateCollectionV2CpiBuilder}, 
 };
-use anchor_lang::solana_program::sysvar::instructions::{load_instruction_at_checked, ID as InstructionsID};
-use anchor_lang::solana_program::ed25519_program;
 
 declare_id!("DMLBNjTTdxA3Tnbx21ZsQU3hX1VUSW4SENPb3HCZrBCr");
 
@@ -22,177 +21,65 @@ pub mod emblem_vault_solana {
         Ok(())
     }
 
-    pub fn mint_vault(
-        ctx: Context<MintVault>,
-        external_token_id: String,
-        price: u64,
-        timestamp: i64,
-    ) -> Result<()> {
-        msg!("Minting vault NFT...");
+    pub fn create_collection(ctx: Context<CreateCollection>, collection_type: String) -> Result<()> {
+        let collection_bump = ctx.bumps.collection;
+        let seeds = &[b"collection", collection_type.as_bytes(), &[collection_bump]]; 
 
-        // Verify the signature verification instruction was called
-        msg!("Attempting to load previous instruction");
-        let previous_ix = match load_instruction_at_checked(0, &ctx.accounts.instruction_sysvar_account.to_account_info()) {
-            Ok(ix) => {
-                msg!("Previous instruction loaded successfully");
-                ix
-            },
-            Err(e) => {
-                msg!("Error loading previous instruction: {:?}", e);
-                return Err(e.into());
-            }
-        };
-        msg!("Previous instruction program ID: {}", previous_ix.program_id);
-
-        // // Extract the public key from the previous instruction
-        let ed25519_ix_data = previous_ix.data;
-        let pubkey_bytes = &ed25519_ix_data[16..48]; // public key is at slice 16..48, there exists a more elegant way with [ed25519_pubkey_offset..ed25519_pubkey_offset + 32]
-        let verification_public_key = Pubkey::new_from_array(pubkey_bytes.try_into().unwrap());
-        msg!("Verification public key: {}", verification_public_key);
-
-        // Check if the verification public key matches the stored signer public key
-        msg!("Stored signer public key: {}", ctx.accounts.program_state.signer_public_key);
-        if verification_public_key != ctx.accounts.program_state.signer_public_key {
-            msg!("Invalid signer: Verification key does not match stored signer key");
-            return Err(VaultError::InvalidSigner.into());
+        // Add initialization logic if needed
+        if ctx.accounts.collection.to_account_info().lamports() == 0 {
+            // The account has not been initialized, proceed with initialization
+            msg!("Initializing collection with type: {}", collection_type);
+        } else {
+            // Collection already initialized
+            msg!("Collection already exists");
+            return Ok(());
         }
+        
+        let name: String = format!("Emblem {} Vaults", collection_type);
+        
+        let mut collection_plugins = vec![];
 
+        collection_plugins.push( PluginAuthorityPair { plugin: Plugin::PermanentFreezeDelegate( PermanentFreezeDelegate { frozen: true}), authority: None});
 
-        // Check if the approval has expired (15-minute validity)
-        let current_time = Clock::get()?.unix_timestamp;
-        require!(
-            current_time - timestamp <= 900,
-            VaultError::ApprovalExpired
-        );
-
-        // Collect minting fee
-        let fee = price;
-        let cpi_context = CpiContext::new(
-            ctx.accounts.system_program.to_account_info(),
-            anchor_lang::system_program::Transfer {
-                from: ctx.accounts.payer.to_account_info(),
-                to: ctx.accounts.fee_receiver.to_account_info(),
-            },
-        );
-        anchor_lang::system_program::transfer(cpi_context, fee)?;
-
-        // Mint one token
-        token::mint_to(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                token::MintTo {
-                    mint: ctx.accounts.mint.to_account_info(),
-                    to: ctx.accounts.token_account.to_account_info(),
-                    authority: ctx.accounts.payer.to_account_info(),
-                },
-            ),
-            1,
-        )?;
-
-        // // Generate metadata
-        let name = format!("Emblem Vault {}", external_token_id);
-        let symbol = generate_symbol(&external_token_id);
-        let uri = format!("{}{}", ctx.accounts.program_state.base_uri, external_token_id);
-
-        // Create metadata
-        let data = DataV2 {
-            name,
-            symbol,
-            uri,
-            seller_fee_basis_points: 0,
-            creators: Some(vec![Creator {
-                address: ctx.accounts.payer.key(),
-                verified: false,
-                share: 100,
-            }]),
-            collection: None,
-            uses: None,
-        };
-
-        let accounts = CreateMetadataAccountsV3 {
-            metadata: ctx.accounts.metadata.to_account_info(),
-            mint: ctx.accounts.mint.to_account_info(),
-            mint_authority: ctx.accounts.payer.to_account_info(),
-            payer: ctx.accounts.payer.to_account_info(),
-            update_authority: ctx.accounts.payer.to_account_info(),
-            system_program: ctx.accounts.system_program.to_account_info(),
-            rent: ctx.accounts.rent.to_account_info(),
-        };
-
-        create_metadata_accounts_v3(
-            CpiContext::new(ctx.accounts.token_metadata_program.to_account_info(), accounts),
-            data,
-            false, // is_mutable
-            true,  // update_authority_is_signer
-            None,  // collection_details
-        )?;
-
-        // Initialize vault data
-        let vault = &mut ctx.accounts.vault;
-        vault.owner = ctx.accounts.payer.key();
-        vault.external_token_id = external_token_id;
-        vault.is_minted = true;
-        vault.is_claimed = false;
-        vault.claimer = None;
-        vault.mint = ctx.accounts.mint.key();
-        vault.token_account = ctx.accounts.token_account.key();
-
+        CreateCollectionV2CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
+        .collection(&ctx.accounts.collection.to_account_info())
+        .payer(&ctx.accounts.payer.to_account_info())
+        .system_program(&ctx.accounts.system_program.to_account_info())
+        .name(name)
+        .uri("https://example.com".to_string())
+        .plugins(collection_plugins)
+        .invoke_signed(&[seeds])?;
+        
         Ok(())
     }
 
-    pub fn claim_vault(
-        ctx: Context<ClaimVault>,
-        external_token_id: String,
-        price: u64,
-        timestamp: i64,
-    ) -> Result<()> {
-        msg!("Claiming vault...");
-        
-        // Verify the signature verification instruction was called
-        let previous_ix = load_instruction_at_checked(0, &ctx.accounts.instruction_sysvar_account.to_account_info())?;
-        if previous_ix.program_id != ed25519_program::ID {
-            return Err(VaultError::InvalidSignature.into());
+    pub fn create_asset(ctx: Context<CreateAsset>, external_token_id: String) -> Result<()> {
+        let asset_bump = ctx.bumps.asset;
+        let collection_key = ctx.accounts.collection.key();
+        let seeds = &[b"vault", collection_key.as_ref(), external_token_id.as_bytes(), &[asset_bump]];
+
+        // Check if the PDA account already exists
+        if ctx.accounts.asset.to_account_info().lamports() > 0 {
+            msg!("The asset PDA already exists. Skipping initialization.");
+            return Err(VaultError::VaultAlreadyExists.into());
         }
 
-        let vault = &mut ctx.accounts.vault;
-        require!(vault.is_minted, VaultError::NotMinted);
-        require!(!vault.is_claimed, VaultError::AlreadyClaimed);
-        require!(vault.external_token_id == external_token_id, VaultError::InvalidExternalTokenId);
+        msg!("Creating asset with external token ID: {}", external_token_id);
+        msg!("Collection key should match collection pda: {}", collection_key);
 
-        // Check if the approval has expired (15-minute validity)
-        let current_time = Clock::get()?.unix_timestamp;
-        require!(
-            current_time - timestamp <= 900,
-            VaultError::ApprovalExpired
-        );
+        
+        // Generate metadata
+        let name = format!("Emblem Vault {}", external_token_id);
+        let uri = format!("{}{}", ctx.accounts.program_state.base_uri, external_token_id);
 
-        // Collect claiming fee
-        let fee = price;
-        let cpi_context = CpiContext::new(
-            ctx.accounts.system_program.to_account_info(),
-            anchor_lang::system_program::Transfer {
-                from: ctx.accounts.claimer.to_account_info(),
-                to: ctx.accounts.fee_receiver.to_account_info(),
-            },
-        );
-        anchor_lang::system_program::transfer(cpi_context, fee)?;
-
-        // Burn the NFT
-        token::burn(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                token::Burn {
-                    mint: ctx.accounts.mint.to_account_info(),
-                    from: ctx.accounts.token_account.to_account_info(),
-                    authority: ctx.accounts.claimer.to_account_info(),
-                },
-            ),
-            1,
-        )?;
-
-        // Update vault data
-        vault.is_claimed = true;
-        vault.claimer = Some(ctx.accounts.claimer.key());
+        CreateV2CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
+        .asset(&ctx.accounts.asset.to_account_info())
+        .collection(Some(&ctx.accounts.collection.to_account_info()))
+        .payer(&ctx.accounts.payer.to_account_info())
+        .system_program(&ctx.accounts.system_program.to_account_info())
+        .name(name)
+        .uri(uri)
+        .invoke_signed(&[seeds])?;
 
         Ok(())
     }
@@ -228,13 +115,6 @@ pub mod emblem_vault_solana {
     }
 }
 
- // Helper function to generate a symbol
- fn generate_symbol(external_token_id: &str) -> String {
-    let prefix = "EV";
-    let suffix: String = external_token_id.chars().filter(|c| c.is_ascii_alphanumeric()).take(3).collect();
-    format!("{}{}", prefix, suffix).to_uppercase()
-}
-
 #[derive(Accounts)]
 pub struct InitializeProgram<'info> {
     #[account(
@@ -251,73 +131,6 @@ pub struct InitializeProgram<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
     pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
-#[instruction(external_token_id: String, price: u64, timestamp: i64)]
-pub struct MintVault<'info> {
-    #[account(
-        init,
-        payer = payer,
-        space = 8 +         // discriminator
-                32 +        // owner (Pubkey)
-                4 + 200 +   // external_token_id (String)
-                1 +         // is_minted (bool)
-                1 +         // is_claimed (bool)
-                33 +        // claimer (Option<Pubkey>)
-                32 +        // mint (Pubkey)
-                32,         // token_account (Pubkey)
-        seeds = [b"vault", external_token_id.as_bytes()],
-        bump
-    )]
-    pub vault: Account<'info, Vault>,
-    #[account(mut)]
-    pub mint: Account<'info, Mint>,
-    #[account(mut)]
-    pub token_account: Account<'info, TokenAccount>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    #[account(mut)]
-    pub metadata: AccountInfo<'info>,
-    #[account(mut)]
-    pub payer: Signer<'info>,
-    /// CHECK: This is the account that will receive the fee
-    #[account(mut)]
-    pub fee_receiver: AccountInfo<'info>,
-    /// CHECK: This account is not dangerous because we only read from it
-    #[account(address = InstructionsID)]
-    pub instruction_sysvar_account: AccountInfo<'info>,
-    pub rent: Sysvar<'info, Rent>,
-    pub system_program: Program<'info, System>,
-    pub token_program: Program<'info, Token>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub token_metadata_program: AccountInfo<'info>,
-    pub program_state: Account<'info, ProgramState>,
-}
-
-#[derive(Accounts)]
-#[instruction(external_token_id: String, price: u64, timestamp: i64)]
-pub struct ClaimVault<'info> {
-    #[account(
-        mut,
-        seeds = [b"vault", external_token_id.as_bytes()],
-        bump,
-        constraint = vault.external_token_id == external_token_id,
-    )]
-    pub vault: Account<'info, Vault>,
-    #[account(mut)]
-    pub mint: Account<'info, Mint>,
-    #[account(mut)]
-    pub token_account: Account<'info, TokenAccount>,
-    #[account(mut)]
-    pub claimer: Signer<'info>,
-    /// CHECK: This is the account that will receive the fee
-    #[account(mut)]
-    pub fee_receiver: AccountInfo<'info>,
-    /// CHECK: This account is not dangerous because we only read from it
-    #[account(address = InstructionsID)]
-    pub instruction_sysvar_account: AccountInfo<'info>,
-    pub system_program: Program<'info, System>,
-    pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]
@@ -379,4 +192,57 @@ pub enum VaultError {
     Unauthorized,
     #[msg("Invalid signer")]
     InvalidSigner,
+    #[msg("Vault already exists")]
+    VaultAlreadyExists,
+}
+
+#[derive(Accounts)]
+#[instruction(collection_type: String)]
+pub struct CreateCollection<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: This doesn't need to be checked, initialized in the program
+    #[account(
+        mut,
+        seeds = [b"collection", collection_type.as_bytes()],
+        bump,
+    )]
+    pub collection: UncheckedAccount<'info>,  
+    /// CHECK: This doesn't need to be checked, because there is the address constraint
+    #[account(address = MPL_CORE_PROGRAM_ID)]
+    pub mpl_core_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(external_token_id: String)]
+pub struct CreateAsset<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: This doesn't need to be checked, initialized in the program
+    #[account(
+        mut, 
+        seeds = [
+            b"vault", 
+            collection.to_account_info().key().as_ref(), 
+            external_token_id.as_bytes()], 
+            bump
+        )]
+    pub asset: AccountInfo<'info>,  // Define the asset PDA data
+    #[account(mut)]
+    pub collection: Account<'info, BaseCollectionV1>,  // Link to the collection
+    /// CHECK: This doesn't need to be checked, because there is the address constraint
+    #[account(address = MPL_CORE_PROGRAM_ID)]
+    pub mpl_core_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+    pub program_state: Account<'info, ProgramState>,
+}
+
+#[account]
+pub struct AssetData {
+    pub name: String,
+    pub uri: String,
+    pub external_token_id: String,
+    pub price: u64,
+    pub timestamp: i64,
 }

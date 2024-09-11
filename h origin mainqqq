@@ -1,0 +1,173 @@
+[33mcommit f6b8c58d2d13fefd5cee4eb37212184879e6018a[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m)[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Wed Sep 11 00:31:18 2024 -0700
+
+    clean unecessary fields
+
+[33mcommit 02504b46fbd3ccef67ab6644a4880380fa0a4e66[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Wed Sep 11 00:28:17 2024 -0700
+
+    simplify vault pda generation
+
+[33mcommit bcd32e31efb8e5912ea3866727bf2796dd859e7b[m[33m ([m[1;31morigin/main[m[33m)[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Mon Sep 9 00:59:43 2024 -0700
+
+    readme
+
+[33mcommit bf344c76db0e9eac81916dd460533fb07e245567[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Mon Sep 9 00:54:32 2024 -0700
+
+    more tests for update signer
+
+[33mcommit 438d086e9c290297676f70e503b326f359d8f03a[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Mon Sep 9 00:47:07 2024 -0700
+
+    test update signer function
+
+[33mcommit 38cb128e9197542f1170c83410226101763372d1[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Sun Sep 8 23:19:07 2024 -0700
+
+    add test for sending in vaild signed message from unauthorized signer
+
+[33mcommit 43a965e1599ea355fa842c254b308394f947a865[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Sun Sep 8 23:16:40 2024 -0700
+
+    update tests for sig verification
+
+[33mcommit 96807f5a5068eff3d2b75193b45af3c05381ab18[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Sun Sep 8 22:46:12 2024 -0700
+
+    fixinf tests-wip
+
+[33mcommit 454dbce2840203972399062183ece72db4721b60[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Sun Sep 8 22:38:31 2024 -0700
+
+    struct for update signer key
+
+[33mcommit a8fb52444a0998fe5244db1ed372534c53cc892a[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Sun Sep 8 22:37:23 2024 -0700
+
+    update signer key method
+
+[33mcommit 7fec021e7acb50dc0ffcbb269b6a2d362708da38[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Sun Sep 8 22:35:48 2024 -0700
+
+    ensure sig is from authorized signer
+
+[33mcommit e62aeff07f0269b03d24220c452c4ff8d4ca1f22[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Sun Sep 8 22:31:05 2024 -0700
+
+    add signer to intialize program method
+
+[33mcommit 252309923698cde548e8a3eca622bff100c09386[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Fri Sep 6 16:24:47 2024 -0700
+
+    yarn lock
+
+[33mcommit 28befc8c46da375a87767c1f4c1f89af72d54b47[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Thu Sep 5 23:07:53 2024 -0700
+
+    readme
+
+[33mcommit 01447152ec1ad52238007ee886ff5b82939b58ab[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Thu Sep 5 23:07:12 2024 -0700
+
+    readme
+
+[33mcommit cd1a5edebaf28441ac5cab3c0cd31eb58f8c60a7[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Thu Sep 5 22:57:50 2024 -0700
+
+    baseuri in program state
+
+[33mcommit 85288883b6223b0b7cbf2ab7fa430ed4dc7f6348[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Mon Sep 2 11:54:45 2024 -0700
+
+    implement checks for inclusion of sig verification in instructions
+
+[33mcommit 8e84cd272e21c88a6e965015826afccd75f2f5eb[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Mon Sep 2 10:34:17 2024 -0700
+
+    update test
+
+[33mcommit 8c88b0c1203bc258eac9bf67659355655f1ae088[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Mon Sep 2 10:32:33 2024 -0700
+
+    claim and query vault functionality
+
+[33mcommit 22f6789a0ca1bf53d612e5a00151d0af5eebbcfa[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Sun Sep 1 01:53:49 2024 -0700
+
+    mint from claim
+
+[33mcommit b2a94f0cb8825db26efe0ebe057b818dee4e1d17[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Sat Aug 31 14:19:30 2024 -0700
+
+    readme
+
+[33mcommit d32ebe48a5eb2ee29620bd4324cf10b485a9a9dd[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Sat Aug 31 14:06:27 2024 -0700
+
+    vault specific data in sig
+
+[33mcommit e7f3e4cc8ccf11e2a5bf768f5328d2ee487ed552[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Sat Aug 31 11:42:03 2024 -0700
+
+    readme
+
+[33mcommit 896bd6ff76fd00c27b5a785bba06717f93e93728[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Sat Aug 31 11:41:31 2024 -0700
+
+    readme
+
+[33mcommit dc85031f997ac97d814846098757c5eac922ffe1[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Sat Aug 31 11:37:06 2024 -0700
+
+    sig verification working
+
+[33mcommit d4c065cfa29783a10d3c383751f92461e67e7c16[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Sun Aug 25 15:24:59 2024 -0700
+
+    readme
+
+[33mcommit b5869832af2502dc0e282d5c05c8bed1749fa1d6[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Sun Aug 25 15:23:08 2024 -0700
+
+    readme
+
+[33mcommit 7ff8c18d800b71989cf971543dfda68060bad820[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Sun Aug 25 14:55:01 2024 -0700
+
+    metadata and sig verify attempt
+
+[33mcommit 5007f2eac39496e7e07d24a0fb3725138b5e1feb[m
+Author: sammyshakes <sam.shakespeare@gmail.com>
+Date:   Sat Aug 24 10:48:25 2024 -0700
+
+    initial program structure
