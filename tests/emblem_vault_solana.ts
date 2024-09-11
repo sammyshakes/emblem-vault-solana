@@ -255,7 +255,6 @@ describe("emblem_vault_solana", () => {
     const mintVaultIx = await program.methods
       .mintVault(externalTokenId, price, new anchor.BN(timestamp))
       .accounts({
-        vault: vaultPda,
         mint: mintKeypair.publicKey,
         tokenAccount: tokenAccount.address,
         metadata: metadataPda,
@@ -308,7 +307,6 @@ describe("emblem_vault_solana", () => {
     const claimVaultIx = await program.methods
       .claimVault(externalTokenId, price, new anchor.BN(timestamp))
       .accounts({
-        vault: vaultPda,
         mint: mintKeypair.publicKey,
         tokenAccount: tokenAccount.address,
         claimer: payerKeypair.publicKey,
@@ -489,7 +487,6 @@ describe("emblem_vault_solana", () => {
     const mintVaultIx = await program.methods
       .mintVault(newExternalTokenId, price, new anchor.BN(timestamp))
       .accounts({
-        vault: newVaultPda,
         mint: mintKeypair.publicKey,
         tokenAccount: tokenAccount.address,
         metadata: metadataPda,
