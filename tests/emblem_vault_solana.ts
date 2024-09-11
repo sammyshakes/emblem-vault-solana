@@ -17,11 +17,6 @@ describe("emblem_vault_solana", () => {
   anchor.setProvider(provider);
   const payerWallet = anchor.Wallet.local();
 
-  //console wallet public key and payer
-  console.log("wallet", payerWallet.publicKey.toBase58());
-  console.log("payer public", payerWallet.payer.publicKey.toBase58());
-  console.log("payer secret", payerWallet.payer.secretKey);
-
   const collectionType = "open";
 
   const program = anchor.workspace
@@ -35,6 +30,8 @@ describe("emblem_vault_solana", () => {
   let signerKeypair: Keypair;
   let feeReceiverKeypair: Keypair;
   let externalTokenId: string;
+
+  const newSignerKeypair = Keypair.generate(); // New signer public key
 
   const [programStatePda] = PublicKey.findProgramAddressSync(
     [Buffer.from("program_state")],
@@ -75,8 +72,8 @@ describe("emblem_vault_solana", () => {
     console.log("collectionPda", collectionPda.toBase58());
     // console.log("vaultSeeds", vaultSeeds);
     // console.log("collectionSeeds", collectionSeeds);
-    // console.log("payerKeypair", payerKeypair.publicKey.toBase58());
-    // console.log("signerKeypair", signerKeypair.publicKey.toBase58());
+    console.log("payerKeypair", payerKeypair.publicKey.toBase58());
+    console.log("signerKeypair", signerKeypair.publicKey.toBase58());
     // console.log("feeReceiverKeypair", feeReceiverKeypair.publicKey.toBase58());
     console.log("externalTokenId", externalTokenId);
     // console.log("programStatePda", programStatePda.toBase58());
@@ -106,6 +103,26 @@ describe("emblem_vault_solana", () => {
   //   );
   // });
 
+  it("Successfully updates signer public key by the authorized authority", async () => {
+    // Call update_signer_public_key from the authorized authority (payerKeypair in this case)
+    await program.methods
+      .updateSignerPublicKey(newSignerKeypair.publicKey)
+      .accounts({
+        programState: programStatePda,
+        authority: payerKeypair.publicKey, // Authorized authority
+      })
+      .signers([payerKeypair]) // Authority signer
+      .rpc();
+
+    // Fetch the updated program state and assert the signer public key is updated
+    const updatedProgramState = await program.account.programState.fetch(
+      programStatePda
+    );
+    expect(updatedProgramState.signerPublicKey.toString()).to.equal(
+      newSignerKeypair.publicKey.toString()
+    );
+  });
+
   it("Create Collection!", async () => {
     const tx = await program.methods
       .createCollection(collectionType)
@@ -118,209 +135,159 @@ describe("emblem_vault_solana", () => {
       .signers([payerKeypair])
       .rpc();
 
-    console.log(tx);
+    // console.log(tx);
   });
 
-  it("Create Asset!", async () => {
-    const tx = await program.methods
-      .createAsset(externalTokenId)
+  it("Mints a Vault", async () => {
+    const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL fee
+    const timestamp = Math.floor(Date.now() / 1000);
+    const message = `mint:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
+    const messageBytes = decodeUTF8(message);
+    const signature = nacl.sign.detached(
+      messageBytes,
+      newSignerKeypair.secretKey
+    );
+
+    const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
+      publicKey: newSignerKeypair.publicKey.toBytes(),
+      message: messageBytes,
+      signature: signature,
+    });
+
+    const tx = new anchor.web3.Transaction().add(verifySignatureIx);
+
+    tx.add(
+      await program.methods
+        .mintVault(externalTokenId, price, new anchor.BN(timestamp))
+        .accountsPartial({
+          payer: payerKeypair.publicKey,
+          asset: vaultPda,
+          collection: collectionPda,
+          mplCoreProgram: MPL_CORE_PROGRAM_ID,
+          programState: programStatePda,
+        })
+        .signers([payerKeypair])
+        .instruction()
+    );
+
+    const signatureResult = await provider.sendAndConfirm(tx, [payerKeypair]);
+
+    // console.log("Transaction Signature:", signatureResult);
+  });
+
+  it("Fails to mint a vault NFT without signature verification", async () => {
+    const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL);
+    const timestamp = Math.floor(Date.now() / 1000);
+
+    // This is the vault mint instruction without signature verification
+    const mintVaultIx = await program.methods
+      .mintVault(externalTokenId, price, new anchor.BN(timestamp))
       .accountsPartial({
-        // signer: payerKeypair.publicKey,
         payer: payerKeypair.publicKey,
         asset: vaultPda,
         collection: collectionPda,
         mplCoreProgram: MPL_CORE_PROGRAM_ID,
         programState: programStatePda,
       })
-      .signers([payerKeypair])
-      .rpc();
+      .instruction();
 
-    console.log(tx);
+    const transaction = new Transaction().add(mintVaultIx);
+
+    try {
+      // Sending the transaction without the signature verification instruction
+      await provider.sendAndConfirm(transaction, [payerKeypair]);
+      throw new Error("Minting should have failed but it succeeded!");
+    } catch (error) {
+      expect(error.message).to.include(
+        "Transaction simulation failed: Error processing Instruction 0"
+      );
+    }
   });
 
-  // it("Fails to mint a vault NFT without signature verification", async () => {
-  //   const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL);
-  //   const timestamp = Math.floor(Date.now() / 1000);
+  it("Fails to mint a vault NFT with a valid signature but unauthorized signer", async () => {
+    const unauthorizedSigner = Keypair.generate(); // Unauthorized signer
+    const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL fee
+    const timestamp = Math.floor(Date.now() / 1000);
+    const message = `mint:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
+    const messageBytes = decodeUTF8(message);
 
-  //   const mintVaultIx = await program.methods
-  //     .mintVault(externalTokenId, price, new anchor.BN(timestamp))
-  //     .accounts({
-  //       mint: mintKeypair.publicKey,
-  //       tokenAccount: tokenAccount.address,
-  //       metadata: Keypair.generate().publicKey, // This is just a placeholder
-  //       payer: payerKeypair.publicKey,
-  //       feeReceiver: feeReceiverKeypair.publicKey,
-  //       programState: programStatePda,
-  //       tokenMetadataProgram: new PublicKey(
-  //         "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
-  //       ),
-  //     })
-  //     .instruction();
+    // Sign the message with the unauthorized signer's keypair
+    const signature = nacl.sign.detached(
+      messageBytes,
+      unauthorizedSigner.secretKey
+    );
 
-  //   const transaction = new Transaction().add(mintVaultIx);
+    const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
+      publicKey: unauthorizedSigner.publicKey.toBytes(),
+      message: messageBytes,
+      signature: signature,
+    });
 
-  //   try {
-  //     await provider.sendAndConfirm(transaction, [payerKeypair]);
-  //     throw new Error("Minting should have failed but it succeeded!");
-  //   } catch (error) {
-  //     expect(error.message).to.include(
-  //       "Transaction simulation failed: Error processing Instruction 0"
-  //     );
-  //   }
-  // });
+    const mintVaultIx = await program.methods
+      .mintVault(externalTokenId, price, new anchor.BN(timestamp))
+      .accountsPartial({
+        payer: payerKeypair.publicKey,
+        asset: vaultPda,
+        collection: collectionPda,
+        mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        programState: programStatePda,
+      })
+      .instruction();
 
-  // it("Fails to mint a vault NFT with a valid signature but unauthorized signer", async () => {
-  //   const unauthorizedSigner = Keypair.generate(); // New keypair for unauthorized signer
-  //   const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL fee
-  //   const timestamp = Math.floor(Date.now() / 1000);
-  //   const message = `mint:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
-  //   const messageBytes = decodeUTF8(message);
+    const transaction = new Transaction().add(verifySignatureIx, mintVaultIx);
 
-  //   // Sign the message with the unauthorized signer's keypair
-  //   const signature = nacl.sign.detached(
-  //     messageBytes,
-  //     unauthorizedSigner.secretKey
-  //   );
+    try {
+      // Attempt to send the transaction with the unauthorized signer
+      await provider.sendAndConfirm(transaction, [
+        payerKeypair,
+        unauthorizedSigner,
+      ]);
+      throw new Error("Minting should have failed but it succeeded!");
+    } catch (error) {
+      expect(error.message).to.include("unknown signer");
+    }
+  });
 
-  //   const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
-  //     publicKey: unauthorizedSigner.publicKey.toBytes(),
-  //     message: messageBytes,
-  //     signature: signature,
-  //   });
+  it("Fails to mint a vault NFT with an invalid signature", async () => {
+    const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL);
+    const timestamp = Math.floor(Date.now() / 1000);
+    const message = `mint:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
+    const messageBytes = decodeUTF8(message);
 
-  //   const mintVaultIx = await program.methods
-  //     .mintVault(externalTokenId, price, new anchor.BN(timestamp))
-  //     .accounts({
-  //       mint: mintKeypair.publicKey,
-  //       tokenAccount: tokenAccount.address,
-  //       metadata: Keypair.generate().publicKey, // This is just a placeholder
-  //       payer: payerKeypair.publicKey,
-  //       feeReceiver: feeReceiverKeypair.publicKey,
-  //       programState: programStatePda,
-  //       tokenMetadataProgram: new PublicKey(
-  //         "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
-  //       ),
-  //     })
-  //     .instruction();
+    // Tamper with the message to produce an invalid signature
+    const tamperedMessageBytes = decodeUTF8("tampered_message");
+    const invalidSignature = nacl.sign.detached(
+      tamperedMessageBytes,
+      signerKeypair.secretKey
+    );
 
-  //   const transaction = new Transaction().add(verifySignatureIx, mintVaultIx);
+    const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
+      publicKey: signerKeypair.publicKey.toBytes(),
+      message: messageBytes, // Correct message but invalid signature
+      signature: invalidSignature,
+    });
 
-  //   try {
-  //     // Attempt to send the transaction with the unauthorized signer
-  //     await provider.sendAndConfirm(transaction, [
-  //       payerKeypair,
-  //       unauthorizedSigner,
-  //     ]);
-  //     throw new Error("Minting should have failed but it succeeded!");
-  //   } catch (error) {
-  //     // console.error("Transaction Error:", error.message);
-  //     expect(error.message).to.include("unknown signer");
-  //   }
-  // });
+    const mintVaultIx = await program.methods
+      .mintVault(externalTokenId, price, new anchor.BN(timestamp))
+      .accountsPartial({
+        payer: payerKeypair.publicKey,
+        asset: vaultPda,
+        collection: collectionPda,
+        mplCoreProgram: MPL_CORE_PROGRAM_ID,
+        programState: programStatePda,
+      })
+      .instruction();
 
-  // it("Fails to mint a vault NFT with an invalid signature", async () => {
-  //   const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL);
-  //   const timestamp = Math.floor(Date.now() / 1000);
-  //   const message = `mint:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
-  //   const messageBytes = decodeUTF8(message);
+    const transaction = new Transaction().add(verifySignatureIx, mintVaultIx);
 
-  //   const tamperedMessageBytes = decodeUTF8("tampered_message");
-  //   const invalidSignature = nacl.sign.detached(
-  //     tamperedMessageBytes,
-  //     signerKeypair.secretKey
-  //   );
-
-  //   const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
-  //     publicKey: signerKeypair.publicKey.toBytes(),
-  //     message: messageBytes,
-  //     signature: invalidSignature,
-  //   });
-
-  //   const mintVaultIx = await program.methods
-  //     .mintVault(externalTokenId, price, new anchor.BN(timestamp))
-  //     .accounts({
-  //       mint: mintKeypair.publicKey,
-  //       tokenAccount: tokenAccount.address,
-  //       metadata: Keypair.generate().publicKey, // This is just a placeholder
-  //       payer: payerKeypair.publicKey,
-  //       feeReceiver: feeReceiverKeypair.publicKey,
-  //       programState: programStatePda,
-  //       tokenMetadataProgram: new PublicKey(
-  //         "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
-  //       ),
-  //     })
-  //     .instruction();
-
-  //   const transaction = new Transaction().add(verifySignatureIx, mintVaultIx);
-
-  //   try {
-  //     await provider.sendAndConfirm(transaction, [payerKeypair]);
-  //     throw new Error("Minting should have failed but it succeeded!");
-  //   } catch (error) {
-  //     expect(error.message).to.include("precompile verification failure");
-  //   }
-  // });
-
-  // it("Mints a vault NFT", async () => {
-  //   const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL fee
-  //   const timestamp = Math.floor(Date.now() / 1000);
-  //   const message = `mint:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
-  //   const messageBytes = decodeUTF8(message);
-  //   const signature = nacl.sign.detached(messageBytes, signerKeypair.secretKey);
-
-  //   const [metadataPda] = PublicKey.findProgramAddressSync(
-  //     [
-  //       Buffer.from("metadata"),
-  //       new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s").toBuffer(),
-  //       mintKeypair.publicKey.toBuffer(),
-  //     ],
-  //     new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s")
-  //   );
-
-  //   const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
-  //     publicKey: signerKeypair.publicKey.toBytes(),
-  //     message: messageBytes,
-  //     signature: signature,
-  //   });
-
-  //   const mintVaultIx = await program.methods
-  //     .mintVault(externalTokenId, price, new anchor.BN(timestamp))
-  //     .accounts({
-  //       mint: mintKeypair.publicKey,
-  //       tokenAccount: tokenAccount.address,
-  //       metadata: metadataPda,
-  //       payer: payerKeypair.publicKey,
-  //       feeReceiver: feeReceiverKeypair.publicKey,
-  //       programState: programStatePda,
-  //       tokenMetadataProgram: new PublicKey(
-  //         "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
-  //       ),
-  //     })
-  //     .instruction();
-
-  //   const transaction = new Transaction().add(verifySignatureIx, mintVaultIx);
-  //   await provider.sendAndConfirm(transaction, [payerKeypair]);
-
-  //   const tokenAccountInfo = await provider.connection.getTokenAccountBalance(
-  //     tokenAccount.address
-  //   );
-  //   expect(new anchor.BN(tokenAccountInfo.value.amount).eq(new anchor.BN(1))).to
-  //     .be.true;
-
-  //   const vaultAccount = await program.account.vault.fetch(vaultPda);
-  //   expect(vaultAccount.isMinted).to.be.true;
-  //   expect(vaultAccount.isClaimed).to.be.false;
-  //   expect(vaultAccount.externalTokenId).to.equal(externalTokenId);
-  //   expect(vaultAccount.owner.toString()).to.equal(
-  //     payerKeypair.publicKey.toString()
-  //   );
-  //   expect(vaultAccount.mint.toString()).to.equal(
-  //     mintKeypair.publicKey.toString()
-  //   );
-  //   expect(vaultAccount.tokenAccount.toString()).to.equal(
-  //     tokenAccount.address.toString()
-  //   );
-  // });
+    try {
+      // Send the transaction with the invalid signature
+      await provider.sendAndConfirm(transaction, [payerKeypair]);
+      throw new Error("Minting should have failed but it succeeded!");
+    } catch (error) {
+      expect(error.message).to.include("precompile verification failure");
+    }
+  });
 
   // it("Claims a vault NFT", async () => {
   //   const price = new anchor.BN(0.5 * anchor.web3.LAMPORTS_PER_SOL); // 0.5 SOL fee
@@ -601,28 +568,6 @@ describe("emblem_vault_solana", () => {
       programStatePda
     );
     expect(programState.signerPublicKey.toString()).to.not.equal(
-      newSignerKeypair.publicKey.toString()
-    );
-  });
-
-  it("Successfully updates signer public key by the authorized authority", async () => {
-    const newSignerKeypair = Keypair.generate(); // New signer public key
-
-    // Call update_signer_public_key from the authorized authority (payerKeypair in this case)
-    await program.methods
-      .updateSignerPublicKey(newSignerKeypair.publicKey)
-      .accounts({
-        programState: programStatePda,
-        authority: payerKeypair.publicKey, // Authorized authority
-      })
-      .signers([payerKeypair]) // Authority signer
-      .rpc();
-
-    // Fetch the updated program state and assert the signer public key is updated
-    const updatedProgramState = await program.account.programState.fetch(
-      programStatePda
-    );
-    expect(updatedProgramState.signerPublicKey.toString()).to.equal(
       newSignerKeypair.publicKey.toString()
     );
   });

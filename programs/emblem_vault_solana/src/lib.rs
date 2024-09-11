@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-
+use anchor_lang::solana_program::sysvar::instructions::{load_instruction_at_checked, ID as InstructionsID};
 use mpl_core::{
     ID as MPL_CORE_PROGRAM_ID,
     accounts::BaseCollectionV1, 
@@ -53,14 +53,46 @@ pub mod emblem_vault_solana {
         Ok(())
     }
 
-    pub fn create_asset(ctx: Context<CreateAsset>, external_token_id: String) -> Result<()> {
+    pub fn mint_vault(ctx: Context<CreateAsset>, external_token_id: String, price: u64, timestamp: i64) -> Result<()> {
+        // Verify the signature verification instruction was called
+        let previous_ix = match load_instruction_at_checked(0, &ctx.accounts.instruction_sysvar_account.to_account_info()) {
+            Ok(ix) => {
+                msg!("Previous instruction loaded successfully");
+                ix
+            },
+            Err(e) => {
+                msg!("Error loading previous instruction: {:?}", e);
+                return Err(e.into());
+            }
+        };
+        msg!("Previous instruction program ID: {}", previous_ix.program_id);
+
+        // // Extract the public key from the previous instruction
+        let ed25519_ix_data = previous_ix.data;
+        let pubkey_bytes = &ed25519_ix_data[16..48]; // public key is at slice 16..48, there exists a more elegant way with [ed25519_pubkey_offset..ed25519_pubkey_offset + 32]
+        let verification_public_key = Pubkey::new_from_array(pubkey_bytes.try_into().unwrap());
+
+        // Check if the verification public key matches the stored signer public key
+        if verification_public_key != ctx.accounts.program_state.signer_public_key {
+            msg!("Invalid signer: Verification key does not match stored signer key");
+            msg!("Verification public key: {}", verification_public_key);
+            msg!("Stored signer public key: {}", ctx.accounts.program_state.signer_public_key);
+            return Err(VaultError::InvalidSigner.into());
+        }
+
+        // Check if the approval has expired (15-minute validity)
+        let current_time = Clock::get()?.unix_timestamp;
+        require!(
+            current_time - timestamp <= 900,
+            VaultError::ApprovalExpired
+        );
+
         let asset_bump = ctx.bumps.asset;
         let collection_key = ctx.accounts.collection.key();
         let seeds = &[b"vault", collection_key.as_ref(), external_token_id.as_bytes(), &[asset_bump]];
 
         // Check if the PDA account already exists
         if ctx.accounts.asset.to_account_info().lamports() > 0 {
-            msg!("The asset PDA already exists. Skipping initialization.");
             return Err(VaultError::VaultAlreadyExists.into());
         }
 
@@ -215,7 +247,7 @@ pub struct CreateCollection<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(external_token_id: String)]
+#[instruction(external_token_id: String, price: u64, timestamp: i64)]
 pub struct CreateAsset<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
@@ -236,13 +268,7 @@ pub struct CreateAsset<'info> {
     pub mpl_core_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
     pub program_state: Account<'info, ProgramState>,
-}
-
-#[account]
-pub struct AssetData {
-    pub name: String,
-    pub uri: String,
-    pub external_token_id: String,
-    pub price: u64,
-    pub timestamp: i64,
+    /// CHECK: This account is not dangerous because we only read from it
+    #[account(address = InstructionsID)]
+    pub instruction_sysvar_account: AccountInfo<'info>,
 }
