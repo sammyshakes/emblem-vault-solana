@@ -67,11 +67,7 @@ describe("emblem_vault_solana", () => {
     );
 
     [vaultPda] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("vault"),
-        payerKeypair.publicKey.toBuffer(),
-        Buffer.from(externalTokenId),
-      ],
+      [Buffer.from("vault"), Buffer.from(externalTokenId)],
       program.programId
     );
 
@@ -443,11 +439,7 @@ describe("emblem_vault_solana", () => {
 
     // Recalculate the PDA based on the new external token ID
     const [newVaultPda] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("vault"),
-        payerKeypair.publicKey.toBuffer(),
-        Buffer.from(newExternalTokenId),
-      ],
+      [Buffer.from("vault"), Buffer.from(newExternalTokenId)],
       program.programId
     );
 

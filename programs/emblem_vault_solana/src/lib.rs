@@ -267,7 +267,7 @@ pub struct MintVault<'info> {
                 33 +        // claimer (Option<Pubkey>)
                 32 +        // mint (Pubkey)
                 32,         // token_account (Pubkey)
-        seeds = [b"vault", payer.key().as_ref(), external_token_id.as_bytes()],
+        seeds = [b"vault", external_token_id.as_bytes()],
         bump
     )]
     pub vault: Account<'info, Vault>,
@@ -299,7 +299,7 @@ pub struct MintVault<'info> {
 pub struct ClaimVault<'info> {
     #[account(
         mut,
-        seeds = [b"vault", vault.owner.as_ref(), external_token_id.as_bytes()],
+        seeds = [b"vault", external_token_id.as_bytes()],
         bump,
         constraint = vault.external_token_id == external_token_id,
     )]
