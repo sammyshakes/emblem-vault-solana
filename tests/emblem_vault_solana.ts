@@ -10,7 +10,12 @@ import {
 import nacl from "tweetnacl";
 import { decodeUTF8 } from "tweetnacl-util";
 import { EmblemVaultSolana } from "../target/types/emblem_vault_solana";
-import { MPL_CORE_PROGRAM_ID } from "@metaplex-foundation/mpl-core";
+import {
+  fetchAsset,
+  MPL_CORE_PROGRAM_ID,
+  mplCore,
+} from "@metaplex-foundation/mpl-core";
+import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 
 describe("emblem_vault_solana", () => {
   const provider = anchor.AnchorProvider.env();
@@ -123,11 +128,10 @@ describe("emblem_vault_solana", () => {
     );
   });
 
-  it("Create Collection!", async () => {
+  it("Creates a Collection", async () => {
     const tx = await program.methods
       .createCollection(collectionType)
       .accountsPartial({
-        // signer: payerKeypair.publicKey,
         payer: payerKeypair.publicKey,
         collection: collectionPda,
         mplCoreProgram: MPL_CORE_PROGRAM_ID,
@@ -172,7 +176,20 @@ describe("emblem_vault_solana", () => {
 
     const signatureResult = await provider.sendAndConfirm(tx, [payerKeypair]);
 
-    // console.log("Transaction Signature:", signatureResult);
+    console.log("Transaction Signature:", signatureResult);
+
+    // fetch the vault account
+    const accountInfo = await provider.connection.getAccountInfo(vaultPda);
+    console.log("Vault Account Info:", accountInfo);
+
+    const umi = createUmi("https://api.devnet.solana.com", "finalized");
+
+    // //deserialize the accountInfo.data
+    // const vault = await fetchAsset(umi,  , {
+    //   skipDerivePlugins: false,
+    // });
+
+    // console.log("Vault:", vault);
   });
 
   it("Fails to mint a vault NFT without signature verification", async () => {
