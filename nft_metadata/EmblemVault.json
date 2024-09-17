@@ -1,0 +1,11 @@
+{
+  "symbol": "EMBL",
+  "description": "This NFT represents an individual vault from the Emblem Vaults collection.",
+  "image": "https://gray-experienced-mockingbird-652.mypinata.cloud/ipfs/QmR7XSbWU7T9GhdDj2TKDVjsfPWhL8gBqwJ7QV5u2sN2zx",
+  "attributes": [
+    { "trait_type": "Blockchain Compatibility", "value": "Cross-chain" },
+    { "trait_type": "Vault Type", "value": "Open" },
+    { "trait_type": "Security", "value": "Advanced" },
+    { "trait_type": "Design", "value": "Holographic Lock" }
+  ]
+}

@@ -56,7 +56,11 @@ describe("emblem_vault_solana", () => {
     //     provider.connection.confirmTransaction(airdropSignature)
     //   );
 
-    collectionSeeds = [Buffer.from("collection"), Buffer.from(collectionType)];
+    collectionSeeds = [
+      Buffer.from("collection"),
+      Buffer.from(collectionType),
+      Buffer.from("1"),
+    ];
     [collectionPda] = PublicKey.findProgramAddressSync(
       collectionSeeds,
       program.programId

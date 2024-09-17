@@ -33,7 +33,7 @@ pub mod emblem_vault_solana {
 
     pub fn create_collection(ctx: Context<CreateCollection>, collection_type: String) -> Result<()> {
         let collection_bump = ctx.bumps.collection;
-        let seeds = &[b"collection", collection_type.as_bytes(), &[collection_bump]]; 
+        let seeds = &[b"collection", collection_type.as_bytes(), b"1", &[collection_bump]]; 
 
         // Add initialization logic if needed
         if ctx.accounts.collection.to_account_info().lamports() == 0 {
@@ -70,7 +70,7 @@ pub mod emblem_vault_solana {
         .payer(&ctx.accounts.payer.to_account_info())
         .system_program(&ctx.accounts.system_program.to_account_info())
         .name(name)
-        .uri("https://example.com".to_string())
+        .uri("https://gray-experienced-mockingbird-652.mypinata.cloud/ipfs/QmdMeZyHGkmnBHbLrXKRzibCqFDTvgTXGNrBnY2opup1Go".to_string())
         .plugins(collection_plugins)
         .invoke_signed(&[seeds])?;
         
@@ -161,7 +161,7 @@ pub mod emblem_vault_solana {
         .payer(&ctx.accounts.payer.to_account_info())
         .system_program(&ctx.accounts.system_program.to_account_info())
         .name(name)
-        .uri("ipfs://QmeFkqZBSaBoeXQ5cb2d7jqD9DYz6EqzfMV35LznWXtfaB/1".to_string())
+        .uri("https://gray-experienced-mockingbird-652.mypinata.cloud/ipfs/QmXnixGRdM2FEZ1ELL3ihLHRGTRuEpRDNRxtgoMMA3HLX1".to_string())
         .invoke_signed(&[seeds])?;
 
         Ok(())
@@ -332,7 +332,7 @@ pub struct CreateCollection<'info> {
     /// CHECK: This doesn't need to be checked, initialized in the program
     #[account(
         mut,
-        seeds = [b"collection", collection_type.as_bytes()],
+        seeds = [b"collection", collection_type.as_bytes(),b"1"],
         bump,
     )]
     pub collection: UncheckedAccount<'info>,  
