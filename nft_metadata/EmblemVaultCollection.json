@@ -1,0 +1,14 @@
+{
+  "name": "Emblem Vaults Open Collection",
+  "symbol": "EMBL",
+  "description": "This NFT represents the Emblem Vaults Open Collection. Each vault is designed to encapsulate digital assets with advanced security and cross-chain compatibility.",
+  "image": "https://gray-experienced-mockingbird-652.mypinata.cloud/ipfs/QmdZhycvzuooeutpePDfB4hKVPd89Q7sT8h6m2hnq3FDEC",
+  "attributes": [
+    {
+      "trait_type": "Blockchain Compatibility",
+      "value": "Bitcoin, Ethereum, Solana"
+    },
+    { "trait_type": "Vault Type", "value": "Open" },
+    { "trait_type": "Security", "value": "Advanced" }
+  ]
+}

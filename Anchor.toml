@@ -14,8 +14,8 @@ emblem_vault_solana = "DMLBNjTTdxA3Tnbx21ZsQU3hX1VUSW4SENPb3HCZrBCr"
 url = "https://api.apr.dev"
 
 [provider]
-# cluster = "devnet"
-cluster = "Localnet"
+cluster = "devnet"
+# cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
