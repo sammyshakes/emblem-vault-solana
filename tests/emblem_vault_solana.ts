@@ -371,12 +371,12 @@ describe("emblem_vault_solana", () => {
 
     // **Step 6:** Create and send the transaction.
 
-    // const transaction = new Transaction().add(verifySignatureIx, claimVaultIx);
-    // const txSignature = await provider.sendAndConfirm(transaction, [
-    //   payerKeypair,
-    // ]);
+    const transaction = new Transaction().add(verifySignatureIx, claimVaultIx);
+    const txSignature = await provider.sendAndConfirm(transaction, [
+      payerKeypair,
+    ]);
 
-    // console.log("Transaction Signature:", txSignature);
+    console.log("Transaction Signature:", txSignature);
 
     console.log("Vault asset burned successfully");
   });
