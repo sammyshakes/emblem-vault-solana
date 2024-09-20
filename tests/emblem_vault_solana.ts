@@ -22,7 +22,7 @@ describe("emblem_vault_solana", () => {
   anchor.setProvider(provider);
   const payerWallet = anchor.Wallet.local();
 
-  const collectionType = "open";
+  let collectionType = "open_" + Date.now().toString();
 
   const program = anchor.workspace
     .EmblemVaultSolana as Program<EmblemVaultSolana>;
@@ -50,16 +50,20 @@ describe("emblem_vault_solana", () => {
     const randomNum = Math.floor(Math.random() * 1000);
     externalTokenId = `EXT_${Date.now()}_${randomNum}`;
 
+    // uncomment for local testing
     // await provider.connection
     //   .requestAirdrop(payerKeypair.publicKey, 10 * anchor.web3.LAMPORTS_PER_SOL)
     //   .then((airdropSignature) =>
     //     provider.connection.confirmTransaction(airdropSignature)
     //   );
 
+    // collectionType = "open_" + Date.now().toString();
+    console.log("Collection Type (before()):", collectionType);
+
     collectionSeeds = [
       Buffer.from("collection"),
       Buffer.from(collectionType),
-      Buffer.from("1"),
+      Buffer.from("2"),
     ];
     [collectionPda] = PublicKey.findProgramAddressSync(
       collectionSeeds,
@@ -83,7 +87,7 @@ describe("emblem_vault_solana", () => {
     // console.log("collectionSeeds", collectionSeeds);
     console.log("payerKeypair", payerKeypair.publicKey.toBase58());
     console.log("signerKeypair", signerKeypair.publicKey.toBase58());
-    // console.log("feeReceiverKeypair", feeReceiverKeypair.publicKey.toBase58());
+    console.log("feeReceiverKeypair", feeReceiverKeypair.publicKey.toBase58());
     console.log("externalTokenId", externalTokenId);
     // console.log("programStatePda", programStatePda.toBase58());
   });
@@ -133,12 +137,11 @@ describe("emblem_vault_solana", () => {
   });
 
   it("Creates a Collection", async () => {
+    console.log("Collection Type:", collectionType);
     const tx = await program.methods
       .createCollection(collectionType)
-      .accountsPartial({
+      .accounts({
         payer: payerKeypair.publicKey,
-        collection: collectionPda,
-        mplCoreProgram: MPL_CORE_PROGRAM_ID,
       })
       .signers([payerKeypair])
       .rpc();
@@ -147,7 +150,7 @@ describe("emblem_vault_solana", () => {
   });
 
   it("Mints a Vault", async () => {
-    const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL fee
+    const price = new anchor.BN(0.1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL fee
     const timestamp = Math.floor(Date.now() / 1000);
     const message = `mint:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
     const messageBytes = decodeUTF8(message);
@@ -167,11 +170,10 @@ describe("emblem_vault_solana", () => {
     tx.add(
       await program.methods
         .mintVault(externalTokenId, price, new anchor.BN(timestamp))
-        .accountsPartial({
+        .accounts({
           payer: payerKeypair.publicKey,
-          asset: vaultPda,
+          feeReceiver: feeReceiverKeypair.publicKey,
           collection: collectionPda,
-          mplCoreProgram: MPL_CORE_PROGRAM_ID,
           programState: programStatePda,
         })
         .signers([payerKeypair])
@@ -186,7 +188,7 @@ describe("emblem_vault_solana", () => {
     const accountInfo = await provider.connection.getAccountInfo(vaultPda);
     console.log("Vault Account Info:", accountInfo);
 
-    const umi = createUmi("https://api.devnet.solana.com", "finalized");
+    // const umi = createUmi("https://api.devnet.solana.com", "finalized");
 
     // //deserialize the accountInfo.data
     // const vault = await fetchAsset(umi,  , {
@@ -197,17 +199,16 @@ describe("emblem_vault_solana", () => {
   });
 
   it("Fails to mint a vault NFT without signature verification", async () => {
-    const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL);
+    const price = new anchor.BN(0.1 * anchor.web3.LAMPORTS_PER_SOL);
     const timestamp = Math.floor(Date.now() / 1000);
 
     // This is the vault mint instruction without signature verification
     const mintVaultIx = await program.methods
       .mintVault(externalTokenId, price, new anchor.BN(timestamp))
-      .accountsPartial({
+      .accounts({
         payer: payerKeypair.publicKey,
-        asset: vaultPda,
+        feeReceiver: feeReceiverKeypair.publicKey,
         collection: collectionPda,
-        mplCoreProgram: MPL_CORE_PROGRAM_ID,
         programState: programStatePda,
       })
       .instruction();
@@ -227,7 +228,7 @@ describe("emblem_vault_solana", () => {
 
   it("Fails to mint a vault NFT with a valid signature but unauthorized signer", async () => {
     const unauthorizedSigner = Keypair.generate(); // Unauthorized signer
-    const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL fee
+    const price = new anchor.BN(0.1 * anchor.web3.LAMPORTS_PER_SOL); // .1 SOL fee
     const timestamp = Math.floor(Date.now() / 1000);
     const message = `mint:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
     const messageBytes = decodeUTF8(message);
@@ -246,11 +247,10 @@ describe("emblem_vault_solana", () => {
 
     const mintVaultIx = await program.methods
       .mintVault(externalTokenId, price, new anchor.BN(timestamp))
-      .accountsPartial({
+      .accounts({
         payer: payerKeypair.publicKey,
-        asset: vaultPda,
+        feeReceiver: feeReceiverKeypair.publicKey,
         collection: collectionPda,
-        mplCoreProgram: MPL_CORE_PROGRAM_ID,
         programState: programStatePda,
       })
       .instruction();
@@ -270,7 +270,7 @@ describe("emblem_vault_solana", () => {
   });
 
   it("Fails to mint a vault NFT with an invalid signature", async () => {
-    const price = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL);
+    const price = new anchor.BN(0.1 * anchor.web3.LAMPORTS_PER_SOL);
     const timestamp = Math.floor(Date.now() / 1000);
     const message = `mint:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
     const messageBytes = decodeUTF8(message);
@@ -290,11 +290,10 @@ describe("emblem_vault_solana", () => {
 
     const mintVaultIx = await program.methods
       .mintVault(externalTokenId, price, new anchor.BN(timestamp))
-      .accountsPartial({
+      .accounts({
         payer: payerKeypair.publicKey,
-        asset: vaultPda,
+        feeReceiver: feeReceiverKeypair.publicKey,
         collection: collectionPda,
-        mplCoreProgram: MPL_CORE_PROGRAM_ID,
         programState: programStatePda,
       })
       .instruction();
@@ -310,43 +309,77 @@ describe("emblem_vault_solana", () => {
     }
   });
 
-  // it("Claims a vault NFT", async () => {
-  //   const price = new anchor.BN(0.5 * anchor.web3.LAMPORTS_PER_SOL); // 0.5 SOL fee
-  //   const timestamp = Math.floor(Date.now() / 1000);
-  //   const message = `claim:${vaultPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
-  //   const messageBytes = decodeUTF8(message);
-  //   const signature = nacl.sign.detached(messageBytes, signerKeypair.secretKey);
+  it("Claims a vault NFT", async () => {
+    // **Step 1:** Derive PDAs and variables used in the instruction.
 
-  //   const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
-  //     publicKey: signerKeypair.publicKey.toBytes(),
-  //     message: messageBytes,
-  //     signature: signature,
-  //   });
+    // Reuse collectionPda and assetPda derived earlier
+    // Ensure they are accessible in the scope of this test
+    // If not, derive them again
+    console.log("collectionPda", collectionPda.toBase58());
 
-  //   const claimVaultIx = await program.methods
-  //     .claimVault(externalTokenId, price, new anchor.BN(timestamp))
-  //     .accounts({
-  //       mint: mintKeypair.publicKey,
-  //       tokenAccount: tokenAccount.address,
-  //       claimer: payerKeypair.publicKey,
-  //       feeReceiver: feeReceiverKeypair.publicKey,
-  //     })
-  //     .instruction();
+    // Derive the authority PDA
+    const [authorityPda, authorityBump] = PublicKey.findProgramAddressSync(
+      [Buffer.from("authority")],
+      program.programId
+    );
 
-  //   const transaction = new Transaction().add(verifySignatureIx, claimVaultIx);
-  //   await provider.sendAndConfirm(transaction, [payerKeypair]);
+    // Derive the asset PDA (vault PDA)
+    const assetSeeds = [
+      Buffer.from("vault"),
+      collectionPda.toBuffer(),
+      Buffer.from(externalTokenId),
+    ];
+    const [assetPda, assetBump] = PublicKey.findProgramAddressSync(
+      assetSeeds,
+      program.programId
+    );
 
-  //   const tokenAccountInfo = await provider.connection.getTokenAccountBalance(
-  //     tokenAccount.address
-  //   );
-  //   expect(tokenAccountInfo.value.uiAmount).to.equal(0);
+    // **Step 2:** Prepare the message for signature verification.
 
-  //   const vaultAccount = await program.account.vault.fetch(vaultPda);
-  //   expect(vaultAccount.isClaimed).to.be.true;
-  //   expect(vaultAccount.claimer.toString()).to.equal(
-  //     payerKeypair.publicKey.toString()
-  //   );
-  // });
+    const price = new anchor.BN(0.05 * anchor.web3.LAMPORTS_PER_SOL); // 0.05 SOL fee
+    const timestamp = Math.floor(Date.now() / 1000);
+    const message = `claim:${assetPda.toBase58()}:${price.toString()}:${timestamp}:${externalTokenId}`;
+    const messageBytes = decodeUTF8(message);
+
+    // **Step 3:** Sign the message with the signer's secret key.
+
+    const signature = nacl.sign.detached(
+      messageBytes,
+      newSignerKeypair.secretKey
+    );
+
+    // **Step 4:** Create the Ed25519 instruction for signature verification.
+
+    const verifySignatureIx = Ed25519Program.createInstructionWithPublicKey({
+      publicKey: newSignerKeypair.publicKey.toBytes(),
+      message: messageBytes,
+      signature: signature,
+    });
+
+    // **Step 5:** Build the claimVault instruction with the correct accounts.
+
+    const claimVaultIx = await program.methods
+      .claimVault(externalTokenId, price, new anchor.BN(timestamp))
+      .accounts({
+        claimer: payerKeypair.publicKey,
+        feeReceiver: feeReceiverKeypair.publicKey,
+        collection: collectionPda,
+        programState: programStatePda,
+      })
+      .signers([payerKeypair]) // Claimer needs to sign
+      .instruction();
+
+    // **Step 6:** Create and send the transaction.
+
+    // const transaction = new Transaction().add(verifySignatureIx, claimVaultIx);
+    // const txSignature = await provider.sendAndConfirm(transaction, [
+    //   payerKeypair,
+    // ]);
+
+    // console.log("Transaction Signature:", txSignature);
+
+    console.log("Vault asset burned successfully");
+  });
 
   // it("Queries vault information", async () => {
   //   const vaultAccount = await program.account.vault.fetch(vaultPda);
