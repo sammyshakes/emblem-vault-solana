@@ -5,10 +5,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-emblem_vault_solana = "DMLBNjTTdxA3Tnbx21ZsQU3hX1VUSW4SENPb3HCZrBCr"
+emblem_vault_solana = "AmCkuQ9euwgmoYyW2wRRmqz2XxspvBYtWeJYz91WoAQ6"
 
 [programs.devnet]
-emblem_vault_solana = "DMLBNjTTdxA3Tnbx21ZsQU3hX1VUSW4SENPb3HCZrBCr"
+emblem_vault_solana = "AmCkuQ9euwgmoYyW2wRRmqz2XxspvBYtWeJYz91WoAQ6"
 
 [registry]
 url = "https://api.apr.dev"
