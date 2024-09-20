@@ -3,7 +3,7 @@ use anchor_lang::solana_program::sysvar::instructions::{load_instruction_at_chec
 use anchor_lang::solana_program::ed25519_program;
 use mpl_core::{
     ID as MPL_CORE_PROGRAM_ID,
-    accounts::{BaseAssetV1, BaseCollectionV1}, 
+    accounts::BaseCollectionV1, 
     types::{
         Attribute,
         Attributes,
@@ -12,9 +12,8 @@ use mpl_core::{
         PluginAuthority, 
         PermanentBurnDelegate, 
         PermanentFreezeDelegate,
-        UpdateAuthority
     }, 
-    instructions::{CreateV2CpiBuilder, CreateCollectionV2CpiBuilder, BurnV1CpiBuilder, BurnV1Builder}, 
+    instructions::{CreateV2CpiBuilder, CreateCollectionV2CpiBuilder, BurnV1CpiBuilder}, 
 };
 
 declare_id!("AmCkuQ9euwgmoYyW2wRRmqz2XxspvBYtWeJYz91WoAQ6");
